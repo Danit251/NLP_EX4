@@ -1,0 +1,22 @@
+The plan for RE:
+Examples:
+    (1) work for:
+      Yoav BIU
+
+    (2) Live in:
+       Danit Givataim
+
+Pipeline:
+1. Identify Ner - for (1) we need PERSON and ORG (and MISC):
+
+                  Reagen -> We (Corref) in the American system (34)
+                  the R1 and R2 can be in different clauses. Nixon U.S. (50)
+                  Consectuve GPE PER -> we will match together -  STOCKTON-ON-TEES , England (AP) _ Michael Minns [...] (70)
+                  this relation can be also with NORP that indicates adjective. (79)
+                  for (2) We need PER and LOC (maybe also MISC)
+                  Person and GPE that have prepositional relation (prep) (78)
+                  compoumd relation between ORGs = the person work_for both (78)
+
+                  Counter example - 35, 52, 60
+
+2.
