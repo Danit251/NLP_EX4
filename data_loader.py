@@ -29,7 +29,7 @@ def full_process():
         for np in sent.noun_chunks:
             print(np.text, np.root.text, np.root.dep_, np.root.head.text)
         # print "#", named entities:
-        for ne in sent.ents:
+        for ne in sent.entities:
             print(ne.text, ne.root.ent_type_, ne.root.text, ne.root.dep_, ne.root.head.text)
 
 
@@ -59,7 +59,7 @@ def get_relevant_examples():
         for np in sent.noun_chunks:
             print(np.text, np.root.text, np.root.dep_, np.root.head.text)
         # print "#", named entities:
-        for ne in sent.ents:
+        for ne in sent.entities:
             print(ne.text, ne.root.ent_type_, ne.root.text, ne.root.dep_, ne.root.head.text)
 
 
@@ -68,7 +68,7 @@ def get_unrelevant_examples():
         for line in codecs.open(fname, encoding="utf8"):
             idx, r1, relation, r2, sent = line.strip().split("\t")
             parsed = nlp(sent)
-            ents = [e.label_ for e in parsed.ents]
+            ents = [e.label_ for e in parsed.entities]
             if 'PERSON' in ents and ('ORG' in ents or 'NORP'  in ents or 'GPE' in ents or 'LOC' in ents):
                 if relation not in ['Live_In', 'Work_For']:
                     sent = sent.replace("-LRB-", "(")
@@ -91,7 +91,7 @@ def get_unrelevant_examples():
         for np in sent.noun_chunks:
             print(np.text, np.root.text, np.root.dep_, np.root.head.text)
         # print "#", named entities:
-        for ne in sent.ents:
+        for ne in sent.entities:
             print(ne.text, ne.root.ent_type_, ne.root.text, ne.root.dep_, ne.root.head.text)
 
 
