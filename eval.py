@@ -1,17 +1,47 @@
 from collections import defaultdict
-from abc import ABC, abstractmethod
+from flair.data import Sentence
+from flair.models import SequenceTagger
 from sklearn.feature_extraction import DictVectorizer
+from sklearn.linear_model import LogisticRegression
+from tqdm import tqdm
 import numpy as np
+import pickle
 import en_core_web_md
 import sys
 
+# load spacy
 nlp = en_core_web_md.load()
+
+# load the NER tagger
+tagger = SequenceTagger.load('ner')
+
 RELATION = "Work_For"
-PERSON = "PERSON"
+PERSON = "PER"
 ORG = "ORG"
 TEXT = "text"
 TYPE = "type"
 OFFSETS = "offsets"
+
+TRAIN_F = "train_data.pkl"
+TEST_F = "test_data.pkl"
+LOAD_FROM_PICKLE = True
+
+
+class Classifier:
+    def __init__(self, vectorizer):
+        self.model = self.train(vectorizer.train_labels, vectorizer.train_vectors)
+        self.pred_labels = self.predict(vectorizer.test_vectors)
+
+    def train(self, labels, features):
+        model = LogisticRegression(random_state=0, multi_class='multinomial', max_iter=1000, dual=False)
+        model.fit(features, labels)
+        return model
+
+    def predict(self, test_vectors):
+        pred_labels = []
+        for vec in test_vectors:
+            pred_labels.append(self.model.predict(vec)[0])
+        return np.array(pred_labels)
 
 
 class RelationsVectorizer:
@@ -23,7 +53,10 @@ class RelationsVectorizer:
         self.test_features = self.get_features(test_data.i2sentence, test_data.relations)
 
         self.train_vectors = self.dv.fit_transform(self.train_features)
+        self.train_labels = np.array(["1"]*len(train_data.pos_relations) + ["0"]*len(train_data.neg_relations))
+
         self.test_vectors = self.dv.transform(self.test_features)
+        self.test_labels = np.array(["1"]*len(test_data.pos_relations) + ["0"]*len(test_data.neg_relations))
 
     def get_features(self, i2sentences, relations):
         features = []
@@ -34,7 +67,8 @@ class RelationsVectorizer:
 
     def get_relation_features(self, relation, sentence):
         features = {}
-        for f_feature in [self.f_pre_word, self.f_pre_pos, self.f_after_word, self.f_after_pos]:
+        for f_feature in [self.f_pre_pos, self.f_after_pos, self.f_distance_in_sentence, self.f_distance_in_tree,
+                          self.f_cur_word, self.f_cur_pos]:
             f_feature(features, relation[1], relation[2], sentence)
         return features
 
@@ -53,6 +87,21 @@ class RelationsVectorizer:
         features["pre_org_pos"] = sentence.analyzed[org_start_index - 1].pos_
         return features
 
+    def f_cur_word(self, features, person, org, sentence):
+        person_start_index = person[OFFSETS][0]
+        features["cur_person"] = sentence.analyzed[person_start_index].text
+
+        org_start_index = org[OFFSETS][0]
+        features["cur_org"] = sentence.analyzed[org_start_index].text
+
+    def f_cur_pos(self, features, person, org, sentence):
+        person_start_index = person[OFFSETS][0]
+        features["cur_person_pos"] = sentence.analyzed[person_start_index].pos_
+
+        org_start_index = org[OFFSETS][0]
+        features["cur_org_pos"] = sentence.analyzed[org_start_index].pos_
+        return features
+
     def f_after_word(self, features, person, org, sentence):
         person_start_index = person[OFFSETS][0]
         features["after_person"] = sentence.analyzed[person_start_index + 1].text
@@ -67,23 +116,41 @@ class RelationsVectorizer:
         org_start_index = org[OFFSETS][0]
         features["after_org_pos"] = sentence.analyzed[org_start_index + 1].pos_
 
+    def f_distance_in_sentence(self, features, person, org, sentence):
+        person_start_index = person[OFFSETS][0]
+        org_start_index = org[OFFSETS][0]
+        features["dist_sent"] = abs(person_start_index - org_start_index)
+
+    def f_distance_in_tree(self, features, person, org, sentence):
+        person_start_index = person[OFFSETS][0]
+        org_start_index = org[OFFSETS][0]
+        cur_head = sentence.analyzed[org_start_index]
+        dist = 1
+        while cur_head.dep_ != "ROOT" and cur_head.idx != person_start_index:
+            dist += 1
+            cur_head = cur_head.head
+
+        if cur_head.dep_ == "ROOT":
+            features["dist_tree"] = len(sentence.analyzed) + 1
+        else:
+            features["dist_tree"] = dist
+
 
 class ProcessAnnotatedData:
     def __init__(self, path):
         self.i2sentence, self.i2relations = self.process_data(path)
         self.pos_relations, self.neg_relations = self.get_relations()
         self.relations = self.pos_relations + self.neg_relations
-        self.labels = np.array(["1"]*len(self.pos_relations) + ["0"]*len(self.neg_relations))
 
     def process_data(self, path):
         i2relations = defaultdict(list)
         with open(path) as f:
             lines = f.readlines()
             sentences = {}
-            for line in lines:
+            for line in tqdm(lines):
                 idx, arg0, relation, arg1, sentence = line.split("\t")
                 if idx not in i2relations:
-                    sentences[idx] = Sentence(idx, sentence)
+                    sentences[idx] = RelationSentence(idx, sentence)
                 i2relations[idx].append((arg0, relation, arg1))
         return sentences, i2relations
 
@@ -109,20 +176,17 @@ class ProcessAnnotatedData:
         return False
 
 
-class Sentence:
+class RelationSentence:
 
     def __init__(self, idx, sentence):
+        sentence = sentence.replace("-LRB-", "(").replace("-RRB-", ")")
         self.idx = idx
         self.text = sentence
+        self.ner = Sentence(sentence)
         self.analyzed = nlp(sentence)
-        self.entities = [{TEXT: ne.text, TYPE: ne.root.ent_type_, OFFSETS: (ne.start, ne.end)} for ne in self.analyzed.ents if ne.root.ent_type_ in [PERSON, ORG]]
-        # self.is_candidate_live_in = self.is_candidate_livein()
-        # self.is_candidate_work_for = self.is_candidate_work_for()
+        tagger.predict(self.ner)
+        self.entities = [{TEXT: ne.text, TYPE: ne.tag, OFFSETS: (ne.tokens[0].idx - 1, ne.tokens[-1].idx - 1)} for ne in self.ner.get_spans() if ne.tag in [PERSON, ORG]]
         self.relations = self.get_optional_relations()
-
-    # def is_candidate_work_for(self):
-    #     entities_type = [entity[self.TYPE] for entity in self.entities]
-    #     return bool(len(set(entities_type)) == 2)
 
     def get_optional_relations(self):
         op_relations = []
@@ -136,11 +200,27 @@ class Sentence:
         return op_relations
 
 
+def save_to_pickle(data, f_name):
+    with open(f_name, 'wb') as output:
+        pickle.dump(data, output, pickle.HIGHEST_PROTOCOL)
+
+
+def load_from_pickle(f_name):
+    with open(f_name, 'rb') as f:
+        data = pickle.load(f)
+    return data
+
+
 def main():
-    # text = "Israel television rejected a skit by comedian Tuvia Tzafir that attacked public apathy by depicting an Israeli family watching TV while a fire raged outside ."
-    # Sentence(text)
-    train = ProcessAnnotatedData(sys.argv[1])
-    test = ProcessAnnotatedData(sys.argv[2])
+    if LOAD_FROM_PICKLE:
+        train = load_from_pickle(TRAIN_F)
+        test = load_from_pickle(TEST_F)
+    else:
+        train = ProcessAnnotatedData(sys.argv[1])
+        save_to_pickle(train, TRAIN_F)
+        test = ProcessAnnotatedData(sys.argv[2])
+        save_to_pickle(test, TEST_F)
+
     vectorizer = RelationsVectorizer(train, test)
 
 
