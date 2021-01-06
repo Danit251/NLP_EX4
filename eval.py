@@ -3,17 +3,21 @@ from flair.data import Sentence
 from flair.models import SequenceTagger
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import SGDClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
 from tqdm import tqdm
 import numpy as np
 import pickle
 import en_core_web_md
 import sys
 
+
 # load spacy
-nlp = en_core_web_md.load()
+# nlp = en_core_web_md.load()
 
 # load the NER tagger
-tagger = SequenceTagger.load('ner')
+# tagger = SequenceTagger.load('ner')
 
 RELATION = "Work_For"
 PERSON = "PER"
@@ -24,24 +28,14 @@ OFFSETS = "offsets"
 
 TRAIN_F = "train_data.pkl"
 TEST_F = "test_data.pkl"
+# MODEL_F = f"model.pkl"
 LOAD_FROM_PICKLE = True
 
 
-class Classifier:
-    def __init__(self, vectorizer):
-        self.model = self.train(vectorizer.train_labels, vectorizer.train_vectors)
-        self.pred_labels = self.predict(vectorizer.test_vectors)
-
-    def train(self, labels, features):
-        model = LogisticRegression(random_state=0, multi_class='multinomial', max_iter=1000, dual=False)
-        model.fit(features, labels)
-        return model
-
-    def predict(self, test_vectors):
-        pred_labels = []
-        for vec in test_vectors:
-            pred_labels.append(self.model.predict(vec)[0])
-        return np.array(pred_labels)
+# class Classifier:
+#     def __init__(self, vectorizer):
+#         self.model = self.train(vectorizer.train_labels, vectorizer.train_vectors)
+#         self.pred_labels = self.predict(vectorizer.test_vectors)
 
 
 class RelationsVectorizer:
@@ -68,7 +62,7 @@ class RelationsVectorizer:
     def get_relation_features(self, relation, sentence):
         features = {}
         for f_feature in [self.f_pre_pos, self.f_after_pos, self.f_distance_in_sentence, self.f_distance_in_tree,
-                          self.f_cur_word, self.f_cur_pos]:
+                          self.f_cur_pos]:
             f_feature(features, relation[1], relation[2], sentence)
         return features
 
@@ -158,10 +152,10 @@ class ProcessAnnotatedData:
         pos_relations = []
         neg_relations = []
         for sentence in self.i2sentence.values():
-            for arg0, rel, arg1 in self.i2relations[sentence.idx]:
+            for gold_person, gold_rel, gold_org in self.i2relations[sentence.idx]:
                 for person, org in sentence.relations:
                     relation = (sentence.idx, person, org, sentence.text)
-                    if self.is_relation_pos(rel, person, org, arg0, arg1):
+                    if self.is_relation_pos(gold_rel, person, org, gold_person, gold_org):
                         pos_relations.append(relation)
                     else:
                         neg_relations.append(relation)
@@ -211,7 +205,23 @@ def load_from_pickle(f_name):
     return data
 
 
+def train_model(labels, vectors):
+    # model = RandomForestClassifier(n_estimators=1000)
+    # model = LogisticRegression(max_iter=1000)
+    model = SGDClassifier(max_iter=1000)
+    model.fit(vectors, labels)
+    return model
+
+
+def predict(model, test_vectors):
+    pred_labels = []
+    for vec in test_vectors:
+        pred_labels.append(model.predict(vec)[0])
+    return np.array(pred_labels)
+
+model_name = "model_SGD_1000"
 def main():
+    np.random.seed(42)
     if LOAD_FROM_PICKLE:
         train = load_from_pickle(TRAIN_F)
         test = load_from_pickle(TEST_F)
@@ -222,6 +232,15 @@ def main():
         save_to_pickle(test, TEST_F)
 
     vectorizer = RelationsVectorizer(train, test)
+    model = train_model(vectorizer.train_labels, vectorizer.train_vectors)
+    save_to_pickle(model, f"models/{model_name}.pkl")
+    predicted_labels = predict(model, vectorizer.test_vectors)
+
+    report = classification_report(vectorizer.test_labels, predicted_labels)
+    print(report)
+
+    with open(f"models/report_{model_name}", "w") as f:
+        f.write(report)
 
 
 if __name__ == '__main__':
