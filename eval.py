@@ -44,17 +44,17 @@ class RelationsVectorizer:
     def __init__(self, train_data, test_data):
         self.dv = DictVectorizer()
 
-        self.train_features = self.get_features(train_data.i2sentence, train_data.relations)
+        self.train_features = self.get_features(train_data.i2sentence, train_data.op_relations)
         self.stat = self.create_features_stat()
         self.norm_features(self.train_features)
         self.norm_stat = self.create_features_stat()
-        self.test_features = self.get_features(test_data.i2sentence, test_data.relations)
+        self.test_features = self.get_features(test_data.i2sentence, test_data.op_relations)
 
         self.train_vectors = self.dv.fit_transform(self.train_features)
-        self.train_labels = np.array(["1"]*len(train_data.pos_relations) + ["0"]*len(train_data.neg_relations))
+        self.train_labels = train_data.labels
 
         self.test_vectors = self.dv.transform(self.test_features)
-        self.test_labels = np.array(["1"]*len(test_data.pos_relations) + ["0"]*len(test_data.neg_relations))
+        self.test_labels = test_data.labels
         print(self.dv.feature_names_)
 
     def norm_features(self, features):
@@ -164,6 +164,7 @@ class ProcessAnnotatedData:
         self.i2sentence, self.i2relations = self.process_data(path)
         self.pos_relations, self.neg_relations = self.get_relations()
         self.relations = self.pos_relations + self.neg_relations
+        self.labels = np.array(["1"] * len(self.pos_relations) + ["0"] * len(self.neg_relations))
 
     def process_data(self, path):
         i2relations = defaultdict(list)
@@ -182,7 +183,7 @@ class ProcessAnnotatedData:
         neg_relations = []
         for sentence in self.i2sentence.values():
             for gold_person, gold_rel, gold_org in self.i2relations[sentence.idx]:
-                for person, org in sentence.relations:
+                for person, org in sentence.op_relations:
                     relation = (sentence.idx, person, org, sentence.text)
                     if self.is_relation_pos(gold_rel, person, org, gold_person, gold_org):
                         pos_relations.append(relation)
@@ -209,7 +210,7 @@ class RelationSentence:
         self.analyzed = nlp(sentence)
         tagger.predict(self.ner)
         self.entities = [{TEXT: ne.text, TYPE: ne.tag, OFFSETS: (ne.tokens[0].idx - 1, ne.tokens[-1].idx - 1)} for ne in self.ner.get_spans() if ne.tag in [PERSON, ORG]]
-        self.relations = self.get_optional_relations()
+        self.op_relations = self.get_optional_relations()
 
     def get_optional_relations(self):
         op_relations = []
