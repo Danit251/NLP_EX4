@@ -5,14 +5,15 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, matthews_corrcoef
 from tqdm import tqdm
 import numpy as np
 import pickle
 import en_core_web_md
 import sys
-
-
+from xgboost import XGBClassifier
+from sklearn.feature_selection import RFE
+import json
 # load spacy
 # nlp = en_core_web_md.load()
 
@@ -44,6 +45,9 @@ class RelationsVectorizer:
         self.dv = DictVectorizer()
 
         self.train_features = self.get_features(train_data.i2sentence, train_data.relations)
+        self.stat = self.create_features_stat()
+        self.norm_features(self.train_features)
+        self.norm_stat = self.create_features_stat()
         self.test_features = self.get_features(test_data.i2sentence, test_data.relations)
 
         self.train_vectors = self.dv.fit_transform(self.train_features)
@@ -51,6 +55,30 @@ class RelationsVectorizer:
 
         self.test_vectors = self.dv.transform(self.test_features)
         self.test_labels = np.array(["1"]*len(test_data.pos_relations) + ["0"]*len(test_data.neg_relations))
+        print(self.dv.feature_names_)
+
+    def norm_features(self, features):
+        for f_dict in features:
+            for f_name, f_val in f_dict.items():
+                f_stat = self.stat[f_name][f_val]
+                # if f_name in ["dist_sent", "dist_tree"]:
+                #     f_val = int(f_val)
+                if (f_name == "dist_sent" and (f_val < 4 or f_val > 13)) or \
+                        (f_name == "dist_tree" and (f_val < 3 or f_val > 6)):
+                    f_dict[f_name] = 0
+                if f_name not in ["dist_sent", "dist_tree"] and f_stat < 20:
+                    f_dict[f_name] = "OTHER"
+
+    def create_features_stat(self):
+        stat = defaultdict(lambda: defaultdict(int))
+        for f in self.train_features:
+            for f_name, f_val in f.items():
+                stat[f_name][f_val] += 1
+
+        for f_name, f_stat in stat.items():
+            stat[f_name] = {k: v for k, v in sorted(f_stat.items(), key=lambda item: item[1], reverse=True)}
+
+        return stat
 
     def get_features(self, i2sentences, relations):
         features = []
@@ -117,15 +145,16 @@ class RelationsVectorizer:
 
     def f_distance_in_tree(self, features, person, org, sentence):
         person_start_index = person[OFFSETS][0]
+        person_end_index = person[OFFSETS][1]
         org_start_index = org[OFFSETS][0]
         cur_head = sentence.analyzed[org_start_index]
         dist = 1
-        while cur_head.dep_ != "ROOT" and cur_head.idx != person_start_index:
+        while cur_head.dep_ != "ROOT" and (person_start_index > cur_head.i or cur_head.i > person_end_index):
             dist += 1
             cur_head = cur_head.head
 
         if cur_head.dep_ == "ROOT":
-            features["dist_tree"] = len(sentence.analyzed) + 1
+            features["dist_tree"] = 0
         else:
             features["dist_tree"] = dist
 
@@ -208,7 +237,8 @@ def load_from_pickle(f_name):
 def train_model(labels, vectors):
     # model = RandomForestClassifier(n_estimators=1000)
     # model = LogisticRegression(max_iter=1000)
-    model = SGDClassifier(max_iter=1000)
+    # model = SGDClassifier(max_iter=1000)
+    model = XGBClassifier()
     model.fit(vectors, labels)
     return model
 
@@ -219,7 +249,22 @@ def predict(model, test_vectors):
         pred_labels.append(model.predict(vec)[0])
     return np.array(pred_labels)
 
-model_name = "model_SGD_1000"
+
+def select_features(model, vectors, labels, features_names):
+    rfe = RFE(model, 1)
+    fit = rfe.fit(vectors, labels)
+    print("Num Features: %d" % fit.n_features_)
+    print("Selected Features: %s" % fit.support_)
+    print("Feature Ranking: %s" % list(fit.ranking_))
+    rank = list(fit.ranking_)
+    merge = {item: int(rank[i]) for i, item in enumerate(features_names)}
+    f_sorted = {k: v for k, v in sorted(merge.items(), key=lambda item: item[1])}
+    return json.dumps(f_sorted, ensure_ascii=False, indent=4)
+
+
+model_name = "model_XGB_1000_ww_other"
+
+
 def main():
     np.random.seed(42)
     if LOAD_FROM_PICKLE:
@@ -235,12 +280,20 @@ def main():
     model = train_model(vectorizer.train_labels, vectorizer.train_vectors)
     save_to_pickle(model, f"models/{model_name}.pkl")
     predicted_labels = predict(model, vectorizer.test_vectors)
+    ranked_features = select_features(model, vectorizer.train_vectors, vectorizer.train_labels, vectorizer.dv.feature_names_)
+    print(ranked_features)
 
     report = classification_report(vectorizer.test_labels, predicted_labels)
     print(report)
-
+    mcc = matthews_corrcoef(vectorizer.test_labels, predicted_labels)
+    print(f"MCC: {mcc}")
     with open(f"models/report_{model_name}", "w") as f:
+        f.write(f"model name: {model_name}\n")
         f.write(report)
+        f.write("\n~~~~~~~~~~\n")
+        f.write(f"MCC: {mcc}")
+        f.write("\n~~~~~~~~~~\n")
+        f.write(f"Rank: {ranked_features}")
 
 
 if __name__ == '__main__':
