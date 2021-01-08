@@ -22,7 +22,7 @@ class SpacyExtractor(Extractor):
 
     def extract(self, sentence: str) -> Dict[str, List[str]]:
         doc = self.nlp(sentence)
-        d = sorted([(e.label_.replace("PERSON", "PER"), e.text) for e in doc.ents if e.label_ in self.valid_entity_types], key=lambda t: t[0])
+        d = sorted([(e.label_.replace("PERSON", "PER"), {"text": e.text, "span": (e.start, e.end - 1)}) for e in doc.ents if e.label_ in self.valid_entity_types], key=lambda t: t[0])
         d = {k: list(map(lambda t:t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
         return d
 
@@ -36,7 +36,7 @@ class FlairExtractor(Extractor):
     def extract(self, sentence: str) -> Dict[str, List[str]]:
         doc = Sentence(sentence)
         self.nlp.predict(doc)
-        d = sorted([(e.tag, e.text.strip('?!. ')) for e in doc.get_spans('ner') if e.tag in self.valid_entity_types],
+        d = sorted([(e.tag, {"text": e.text.strip('?!. '), "span": (e.tokens[0].idx - 1, e.tokens[-1].idx - 1)}) for e in doc.get_spans('ner') if e.tag in self.valid_entity_types],
                      key=lambda t: t[0])
         d = {k: list(map(lambda t:t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
         return d
@@ -80,6 +80,7 @@ for i, sent in tqdm(i2sent.items()):
     rel_ents = get_relevant_ents(relations)
     if len(rel_ents['ORG']) == 0 or len(rel_ents['PER']) == 0:
         continue
+    sent = sent.strip("\n ()")
     spacy_pred = spacy_extractor.extract(sent)
     flair_pred = flair_extractor.extract(sent)
 
