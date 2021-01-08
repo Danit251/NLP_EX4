@@ -21,9 +21,9 @@ Pipeline:
 
 2.
 train
-flair score 85.5072463768116%
-spacy score 76.32850241545893%
-combined score 92.7536231884058%
+flair score 85.99033816425121%
+spacy score 75.84541062801932%
+combined score 93.71980676328504%
 dev
 flair score 80.59701492537313%
 spacy score 70.1492537313433%
