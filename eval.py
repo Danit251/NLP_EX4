@@ -14,29 +14,26 @@ import sys
 from xgboost import XGBClassifier
 from sklearn.feature_selection import RFE
 import json
+from evaluating_extractors import FlairExtractor, SpacyExtractor
+
 # load spacy
-# nlp = en_core_web_md.load()
+nlp = en_core_web_md.load()
 
 # load the NER tagger
-# tagger = SequenceTagger.load('ner')
+tagger = SequenceTagger.load('ner')
 
 RELATION = "Work_For"
 PERSON = "PER"
 ORG = "ORG"
 TEXT = "text"
 TYPE = "type"
-OFFSETS = "offsets"
+SPAN = "span"
 
 TRAIN_F = "train_data.pkl"
 TEST_F = "test_data.pkl"
 # MODEL_F = f"model.pkl"
-LOAD_FROM_PICKLE = True
-
-
-# class Classifier:
-#     def __init__(self, vectorizer):
-#         self.model = self.train(vectorizer.train_labels, vectorizer.train_vectors)
-#         self.pred_labels = self.predict(vectorizer.test_vectors)
+LOAD_FROM_PICKLE = False
+extractor = EntitiesExtraction()
 
 
 class RelationsVectorizer:
@@ -44,11 +41,11 @@ class RelationsVectorizer:
     def __init__(self, train_data, test_data):
         self.dv = DictVectorizer()
 
-        self.train_features = self.get_features(train_data.i2sentence, train_data.op_relations)
+        self.train_features = self.get_features(train_data.op_relations)
         self.stat = self.create_features_stat()
         self.norm_features(self.train_features)
         self.norm_stat = self.create_features_stat()
-        self.test_features = self.get_features(test_data.i2sentence, test_data.op_relations)
+        self.test_features = self.get_features(test_data.op_relations)
 
         self.train_vectors = self.dv.fit_transform(self.train_features)
         self.train_labels = train_data.labels
@@ -61,8 +58,6 @@ class RelationsVectorizer:
         for f_dict in features:
             for f_name, f_val in f_dict.items():
                 f_stat = self.stat[f_name][f_val]
-                # if f_name in ["dist_sent", "dist_tree"]:
-                #     f_val = int(f_val)
                 if (f_name == "dist_sent" and (f_val < 4 or f_val > 13)) or \
                         (f_name == "dist_tree" and (f_val < 3 or f_val > 6)):
                     f_dict[f_name] = 0
@@ -80,73 +75,65 @@ class RelationsVectorizer:
 
         return stat
 
-    def get_features(self, i2sentences, relations):
+    def get_features(self, relations):
         features = []
         for relation in relations:
-            feature = self.get_relation_features(relation, i2sentences[relation[0]])
+            feature = self.get_relation_features(relation)
             features.append(feature)
         return features
 
-    def get_relation_features(self, relation, sentence):
+    def get_relation_features(self, relation):
         features = {}
         for f_feature in [self.f_pre_pos, self.f_after_pos, self.f_distance_in_sentence, self.f_distance_in_tree,
                           self.f_cur_pos]:
-            f_feature(features, relation[1], relation[2], sentence)
+            f_feature(features, relation[1], relation[2], relation[3])
         return features
-
-    def f_pre_word(self, features, person, org, sentence):
-        person_start_index = person[OFFSETS][0]
-        features["pre_person"] = sentence.analyzed[person_start_index - 1].text
-
-        org_start_index = org[OFFSETS][0]
-        features["pre_org"] = sentence.analyzed[org_start_index - 1].text
 
     def f_pre_pos(self, features, person, org, sentence):
-        person_start_index = person[OFFSETS][0]
-        features["pre_person_pos"] = sentence.analyzed[person_start_index - 1].pos_
+        person_start_index = person[SPAN][0]
+        if person_start_index != 0:
+            features["pre_person_pos"] = sentence.analyzed[person_start_index - 1].pos_
+        else:
+            features["pre_person_pos"] = "START"
 
-        org_start_index = org[OFFSETS][0]
-        features["pre_org_pos"] = sentence.analyzed[org_start_index - 1].pos_
+        org_start_index = org[SPAN][0]
+        if org_start_index != 0:
+            features["pre_org_pos"] = sentence.analyzed[org_start_index - 1].pos_
+        else:
+            features["pre_org_pos"] = "START"
+
         return features
 
-    def f_cur_word(self, features, person, org, sentence):
-        person_start_index = person[OFFSETS][0]
-        features["cur_person"] = sentence.analyzed[person_start_index].text
-
-        org_start_index = org[OFFSETS][0]
-        features["cur_org"] = sentence.analyzed[org_start_index].text
-
     def f_cur_pos(self, features, person, org, sentence):
-        person_start_index = person[OFFSETS][0]
+        person_start_index = person[SPAN][0]
         features["cur_person_pos"] = sentence.analyzed[person_start_index].pos_
 
-        org_start_index = org[OFFSETS][0]
+        org_start_index = org[SPAN][0]
         features["cur_org_pos"] = sentence.analyzed[org_start_index].pos_
         return features
 
-    def f_after_word(self, features, person, org, sentence):
-        person_start_index = person[OFFSETS][0]
-        features["after_person"] = sentence.analyzed[person_start_index + 1].text
-
-        org_start_index = org[OFFSETS][0]
-        features["after_org"] = sentence.analyzed[org_start_index + 1].text
-
     def f_after_pos(self, features, person, org, sentence):
-        person_start_index = person[OFFSETS][0]
-        features["after_person_pos"] = sentence.analyzed[person_start_index + 1].pos_
+        person_start_index = person[SPAN][0]
+        if person_start_index != 0:
+            features["pre_person_pos"] = sentence.analyzed[person_start_index + 1].pos_
+        else:
+            features["pre_person_pos"] = "END"
 
-        org_start_index = org[OFFSETS][0]
-        features["after_org_pos"] = sentence.analyzed[org_start_index + 1].pos_
+        org_start_index = org[SPAN][0]
+        if org_start_index != 0:
+            features["pre_org_pos"] = sentence.analyzed[org_start_index + 1].pos_
+        else:
+            features["pre_org_pos"] = "END"
 
     def f_distance_in_sentence(self, features, person, org, sentence):
-        person_start_index = person[OFFSETS][0]
-        org_start_index = org[OFFSETS][0]
+        person_start_index = person[SPAN][0]
+        org_start_index = org[SPAN][0]
         features["dist_sent"] = abs(person_start_index - org_start_index)
 
     def f_distance_in_tree(self, features, person, org, sentence):
-        person_start_index = person[OFFSETS][0]
-        person_end_index = person[OFFSETS][1]
-        org_start_index = org[OFFSETS][0]
+        person_start_index = person[SPAN][0]
+        person_end_index = person[SPAN][1]
+        org_start_index = org[SPAN][0]
         cur_head = sentence.analyzed[org_start_index]
         dist = 1
         while cur_head.dep_ != "ROOT" and (person_start_index > cur_head.i or cur_head.i > person_end_index):
@@ -163,7 +150,7 @@ class ProcessAnnotatedData:
     def __init__(self, path):
         self.i2sentence, self.i2relations = self.process_data(path)
         self.pos_relations, self.neg_relations = self.get_relations()
-        self.relations = self.pos_relations + self.neg_relations
+        self.gold_relations = self.pos_relations + self.neg_relations
         self.labels = np.array(["1"] * len(self.pos_relations) + ["0"] * len(self.neg_relations))
 
     def process_data(self, path):
@@ -193,29 +180,59 @@ class ProcessAnnotatedData:
         return pos_relations, neg_relations
 
     def is_relation_pos(self, rel, person, org, arg0, arg1):
-        # if rel == RELATION and (person[TEXT] in arg0 or arg0 in person[TEXT]) and\
-        #         (org[TEXT] in arg1 or arg1 in org[TEXT]):
         if rel == RELATION and person[TEXT] == arg0 and org[TEXT] == arg1:
             return True
         return False
 
 
+class EntitiesExtraction:
+    def __init__(self):
+        self.ext_spacy = SpacyExtractor()
+        self.ext_flair = FlairExtractor()
+
+    def extract(self, sentence):
+        spacy_entities = self.ext_spacy.extract(sentence)
+        flair_entities = self.ext_flair.extract(sentence)
+        res = defaultdict(list)
+        for ent_type in [PERSON, ORG]:
+            s = spacy_entities[ent_type] if ent_type in spacy_entities else []
+            f = flair_entities[ent_type] if ent_type in flair_entities else []
+            if len(f) >= len(s):
+                res[ent_type] = f
+            else:
+                for ent_s in s:
+                    inserted = False
+
+                    # if finds entity in flair insert it
+                    for ent_f in f:
+                        if ent_s in ent_f or ent_f in ent_s:
+                            res[ent_type].append(ent_f)
+                            inserted = True
+                            break
+
+                    # if didn't find entity in flair insert it from spacy
+                    if not inserted:
+                        res[ent_type].append(ent_s)
+
+        return res
+
+
 class RelationSentence:
 
     def __init__(self, idx, sentence):
-        sentence = sentence.replace("-LRB-", "(").replace("-RRB-", ")")
+        sentence = sentence.replace("-LRB-", "(").replace("-RRB-", ")").strip("()\n ")
         self.idx = idx
         self.text = sentence
-        self.ner = Sentence(sentence)
+        # self.ner = Sentence(sentence)
         self.analyzed = nlp(sentence)
-        tagger.predict(self.ner)
-        self.entities = [{TEXT: ne.text, TYPE: ne.tag, OFFSETS: (ne.tokens[0].idx - 1, ne.tokens[-1].idx - 1)} for ne in self.ner.get_spans() if ne.tag in [PERSON, ORG]]
+        # tagger.predict(self.ner)
+        self.entities = [{TEXT: ne.text, TYPE: ne.tag, SPAN: (ne.tokens[0].idx - 1, ne.tokens[-1].idx - 1)} for ne in self.ner.get_spans() if ne.tag in [PERSON, ORG]]
         self.op_relations = self.get_optional_relations()
 
     def get_optional_relations(self):
         op_relations = []
-        persons = [{TEXT: ne[TEXT], OFFSETS: ne[OFFSETS]} for ne in self.entities if ne[TYPE] == PERSON]
-        orgs = [{TEXT: ne[TEXT], OFFSETS: ne[OFFSETS]} for ne in self.entities if ne[TYPE] == ORG]
+        persons = [{TEXT: ne[TEXT], SPAN: ne[SPAN]} for ne in self.entities if ne[TYPE] == PERSON]
+        orgs = [{TEXT: ne[TEXT], SPAN: ne[SPAN]} for ne in self.entities if ne[TYPE] == ORG]
 
         for person in persons:
             for org in orgs:
@@ -298,4 +315,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    e = EntitiesExtraction()
+    entities = e.extract("STOCKTON-ON-TEES , England ( AP ) _ Michael Minns received $160 , 000 from the father he never knew and thought was killed in World War II .")
+    print(entities)
