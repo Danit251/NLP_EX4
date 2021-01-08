@@ -14,11 +14,11 @@ LOAD_FROM_PICKLE = True
 class WeVectorizer:
     def __init__(self,  train_data, test_data):
         self.vectorizer = en_vectors_web_lg.load()
-        self.train_vec = self.vectorizer_data(train_data.relations)
-        self.train_labels = np.array(["1"] * len(train_data.pos_relations) + ["0"] * len(train_data.neg_relations))
+        self.train_vec = self.vectorizer_data(train_data.gold_relations)
+        self.train_labels = train_data.labels
 
-        self.test_vec = self.vectorizer_data(test_data.relations)
-        self.test_labels = np.array(["1"]*len(test_data.pos_relations) + ["0"] * len(test_data.neg_relations))
+        self.test_vec = self.vectorizer_data(test_data.gold_relations)
+        self.test_labels = test_data.labels
 
     def vectorizer_data(self, relations):
         vecs = []
