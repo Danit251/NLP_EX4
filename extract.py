@@ -20,9 +20,6 @@ from itertools import product
 # load spacy
 nlp = en_core_web_md.load()
 
-# load the NER tagger
-# tagger = SequenceTagger.load('ner')
-
 RELATION = "Work_For"
 PERSON = "PER"
 ORG = "ORG"
@@ -32,8 +29,8 @@ SPAN = "span"
 
 TRAIN_F = "train_data.pkl"
 TEST_F = "test_data.pkl"
-# MODEL_F = f"model.pkl"
-LOAD_FROM_PICKLE = False
+LOAD_FROM_PICKLE = True
+model_name = "model_XGB_1000_ww_other_improve_entities"
 
 
 class RelationsVectorizer:
@@ -156,7 +153,6 @@ class ProcessAnnotatedData:
         self.gold_relations = self.pos_relations + self.neg_relations
         self.labels = np.array(["1"] * len(self.pos_relations) + ["0"] * len(self.neg_relations))
 
-
     def process_data(self, path):
         i2relations = defaultdict(list)
         with open(path) as f:
@@ -216,8 +212,7 @@ class EntitiesExtraction:
         for ent_type in [PERSON, ORG]:
             s = spacy_entities[ent_type] if ent_type in spacy_entities else []
             f = flair_entities[ent_type] if ent_type in flair_entities else []
-            if "Sirhan Bishara Sirhan" in s or "Sirhan Bishara Sirhan" in f:
-                pass
+
             if len(f) >= len(s):
                 res[ent_type] = f
             else:
@@ -255,7 +250,6 @@ class RelationSentence:
         extractor = EntitiesExtraction()
         self.entities = extractor.extract(sentence, self.analyzed)
         self.op_relations = list(product(self.entities[PERSON], self.entities[ORG]))
-        print()
 
 
 def save_to_pickle(data, f_name):
@@ -297,7 +291,11 @@ def select_features(model, vectors, labels, features_names):
     return json.dumps(f_sorted, ensure_ascii=False, indent=4)
 
 
-model_name = "model_XGB_1000_ww_other_improve_entities"
+def write_results(gold_relations, predicted_labels):
+    with open("PRED.annotations.txt", "w") as f_res:
+        for i, (idx, person, org, sentence) in enumerate(gold_relations):
+            if predicted_labels[i] == "1":
+                f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
 
 
 def main():
@@ -315,6 +313,9 @@ def main():
     model = train_model(vectorizer.train_labels, vectorizer.train_vectors)
     save_to_pickle(model, f"models/{model_name}.pkl")
     predicted_labels = predict(model, vectorizer.test_vectors)
+
+    write_results(test.gold_relations, predicted_labels)
+
     ranked_features = select_features(model, vectorizer.train_vectors, vectorizer.train_labels, vectorizer.dv.feature_names_)
     print(ranked_features)
 
