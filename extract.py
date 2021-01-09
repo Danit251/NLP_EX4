@@ -313,7 +313,7 @@ def select_features(model, vectors, labels, features_names):
     return json.dumps(f_sorted, ensure_ascii=False, indent=4)
 
 
-def write_results(f_name, op_relations, predicted_labels, ent_n, xgb):
+def write_results(f_name, op_relations, predicted_labels):
     with open(f_name, "w") as f_res:
         for i, (idx, person, org, sentence) in enumerate(op_relations):
             if predicted_labels[i] == "1":
