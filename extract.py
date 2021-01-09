@@ -29,7 +29,7 @@ SPAN = "span"
 
 TRAIN_F = "train_data.pkl"
 TEST_F = "test_data.pkl"
-LOAD_FROM_PICKLE = True
+LOAD_FROM_PICKLE = False
 model_name = "model_XGB_1000_ww_other_improve_entities"
 
 
@@ -38,11 +38,11 @@ class RelationsVectorizer:
     def __init__(self, train_data, test_data):
         self.dv = DictVectorizer()
 
-        self.train_features = self.get_features(train_data.i2sentence, train_data.gold_relations)
+        self.train_features = self.get_features(train_data.i2sentence, train_data.op_relations)
         self.stat = self.create_features_stat()
         self.norm_features(self.train_features)
-        self.norm_stat = self.create_features_stat()
-        self.test_features = self.get_features(test_data.i2sentence, test_data.gold_relations)
+        # self.norm_stat = self.create_features_stat()
+        self.test_features = self.get_features(test_data.i2sentence, test_data.op_relations)
 
         self.train_vectors = self.dv.fit_transform(self.train_features)
         self.train_labels = train_data.labels
@@ -150,7 +150,7 @@ class ProcessAnnotatedData:
     def __init__(self, path):
         self.i2sentence, self.i2relations = self.process_data(path)
         self.pos_relations, self.neg_relations = self.get_relations()
-        self.gold_relations = self.pos_relations + self.neg_relations
+        self.op_relations = self.pos_relations + self.neg_relations
         self.labels = np.array(["1"] * len(self.pos_relations) + ["0"] * len(self.neg_relations))
 
     def process_data(self, path):
@@ -207,6 +207,7 @@ class EntitiesExtraction:
         spacy_entities = self.ext_spacy.extract(sentence)
         flair_entities = self.ext_flair.extract(sentence)
         self.update_offsets(flair_entities, analyzed_sent)
+        spacy_entities = self.remove_contradict_entities(spacy_entities, flair_entities)
 
         res = defaultdict(list)
         for ent_type in [PERSON, ORG]:
@@ -221,16 +222,38 @@ class EntitiesExtraction:
 
                     # if finds entity in flair insert it
                     for ent_f in f:
-                        if ent_s[TEXT] in ent_f[TEXT] or ent_f[TEXT] in ent_s[TEXT]:
-                            res[ent_type].append(ent_f)
-                            inserted = True
-                            break
+                        if (ent_s[SPAN][1] - ent_s[SPAN][0]) == (ent_f[SPAN][1] - ent_f[SPAN][0]):
+                            if ent_s[TEXT] == ent_f[TEXT]:
+                                res[ent_type].append(ent_f)
+                                inserted = True
+                                break
+                        else:
+                            if ent_s[TEXT] in ent_f[TEXT] or ent_f[TEXT] in ent_s[TEXT]:
+                                res[ent_type].append(ent_f)
+                                inserted = True
+                                break
 
                     # if didn't find entity in flair insert it from spacy
                     if not inserted:
                         res[ent_type].append(ent_s)
 
         return res
+
+    def remove_contradict_entities(self, spacy_entities, flair_entities):
+        spacy_person = spacy_entities[PERSON] if PERSON in spacy_entities else []
+        spacy_org = spacy_entities[ORG] if ORG in spacy_entities else []
+
+        if PERSON in flair_entities:
+            person_flair = set([ent[TEXT] for ent in flair_entities[PERSON]])
+            if ORG in spacy_entities:
+                spacy_org = [s for s in spacy_entities[ORG] if s[TEXT] not in person_flair]
+
+        if ORG in flair_entities:
+            org_flair = set([ent[TEXT] for ent in flair_entities[ORG]])
+            if PERSON in spacy_entities:
+                spacy_person = [s for s in spacy_entities[PERSON] if s[TEXT] not in org_flair]
+
+        return {ORG: spacy_org, PERSON: spacy_person}
 
     def update_offsets(self, entities, analyzed_sent):
         for type_entity in entities:
@@ -291,9 +314,9 @@ def select_features(model, vectors, labels, features_names):
     return json.dumps(f_sorted, ensure_ascii=False, indent=4)
 
 
-def write_results(gold_relations, predicted_labels):
+def write_results(op_relations, predicted_labels):
     with open("PRED.annotations.txt", "w") as f_res:
-        for i, (idx, person, org, sentence) in enumerate(gold_relations):
+        for i, (idx, person, org, sentence) in enumerate(op_relations):
             if predicted_labels[i] == "1":
                 f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
 
@@ -314,7 +337,7 @@ def main():
     save_to_pickle(model, f"models/{model_name}.pkl")
     predicted_labels = predict(model, vectorizer.test_vectors)
 
-    write_results(test.gold_relations, predicted_labels)
+    write_results(test.op_relations, predicted_labels)
 
     ranked_features = select_features(model, vectorizer.train_vectors, vectorizer.train_labels, vectorizer.dv.feature_names_)
     print(ranked_features)

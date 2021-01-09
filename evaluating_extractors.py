@@ -1,11 +1,12 @@
 from collections import defaultdict
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Union
 from itertools import groupby
 from flair.data import Sentence
 from flair.models import SequenceTagger
 import en_core_web_md
 from abc import ABC, abstractmethod
 from tqdm import tqdm
+
 
 class Extractor(ABC):
 
@@ -20,7 +21,7 @@ class SpacyExtractor(Extractor):
         self.nlp = en_core_web_md.load()
         self.valid_entity_types = {"PERSON", "ORG"}
 
-    def extract(self, sentence: str) -> Dict[str, List[str]]:
+    def extract(self, sentence: str) -> Dict[str, Dict[str, Union[str, Tuple]]]:
         doc = self.nlp(sentence)
         d = sorted([(e.label_.replace("PERSON", "PER"), {"text": e.text, "span": (e.start, e.end - 1)}) for e in doc.ents if e.label_ in self.valid_entity_types], key=lambda t: t[0])
         d = {k: list(map(lambda t: t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
@@ -33,7 +34,7 @@ class FlairExtractor(Extractor):
         self.nlp = SequenceTagger.load('ner')
         self.valid_entity_types = {"ORG", "PER", "MISC"}
 
-    def extract(self, sentence: str) -> Dict[str, List[str]]:
+    def extract(self, sentence: str) -> Dict[str, Dict[str, Union[str, Tuple]]]:
         doc = Sentence(sentence)
         self.nlp.predict(doc)
         d = sorted([(e.tag, {"text": e.text, "span": (e.tokens[0].start_pos, len(e.tokens))}) for e in doc.get_spans('ner') if e.tag in self.valid_entity_types],
@@ -41,22 +42,22 @@ class FlairExtractor(Extractor):
         d = {k: list(map(lambda t: t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
         return d
 
-#
-# def process_data(path):
-#     i2sent = {}
-#     i2relations = defaultdict(list)
-#     with open(path) as f:
-#         lines = f.readlines()
-#         for line in lines:
-#             idx, arg0, relation, arg1, sentence = line.split("\t")
-#             i2sent[idx] = sentence
-#             i2relations[idx].append((arg0, relation, arg1))
-#     return i2sent, i2relations
-#
-# i2sent, i2relations = process_data('data/TRAIN.annotations.tsv')
-#
-# spacy_extractor = SpacyExtractor()
-# flair_extractor = FlairExtractor()
+
+def process_data(path):
+    i2sent = {}
+    i2relations = defaultdict(list)
+    with open(path) as f:
+        lines = f.readlines()
+        for line in lines:
+            idx, arg0, relation, arg1, sentence = line.split("\t")
+            i2sent[idx] = sentence
+            i2relations[idx].append((arg0, relation, arg1))
+    return i2sent, i2relations
+
+i2sent, i2relations = process_data('data/TRAIN.annotations.tsv')
+
+spacy_extractor = SpacyExtractor()
+flair_extractor = FlairExtractor()
 
 work_for = 'Work_For'
 def get_relevant_ents(relations) -> Dict[str, set]:
