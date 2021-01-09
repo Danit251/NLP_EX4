@@ -7,11 +7,12 @@ import en_core_web_md
 from abc import ABC, abstractmethod
 from tqdm import tqdm
 
+work_for = 'Work_For'
 
 class Extractor(ABC):
 
     @abstractmethod
-    def extract(self, sentence: str) -> Dict[str, List[str]]:
+    def extract(self, sentence: str) ->Dict[str, Dict[str, Union[str, Tuple]]]:
         pass
 
 
@@ -54,12 +55,8 @@ def process_data(path):
             i2relations[idx].append((arg0, relation, arg1))
     return i2sent, i2relations
 
-i2sent, i2relations = process_data('data/TRAIN.annotations.tsv')
 
-spacy_extractor = SpacyExtractor()
-flair_extractor = FlairExtractor()
 
-work_for = 'Work_For'
 def get_relevant_ents(relations) -> Dict[str, set]:
     rel_ent = defaultdict(set)
     for cand_per, relation, cand_org in relations:
@@ -71,6 +68,9 @@ def get_relevant_ents(relations) -> Dict[str, set]:
 
 
 def run_evaluation():
+    spacy_extractor = SpacyExtractor()
+    flair_extractor = FlairExtractor()
+    i2sent, i2relations = process_data('data/TRAIN.annotations.tsv')
 
     total = 0
     spacy_score = 0
