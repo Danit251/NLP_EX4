@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.metrics import classification_report, matthews_corrcoef
 from xgboost import XGBClassifier
-from eval import load_from_pickle, ProcessAnnotatedData, save_to_pickle, TRAIN_F, TEST_F, RelationSentence
+from extract import load_from_pickle, ProcessAnnotatedData, save_to_pickle, TRAIN_F, TEST_F
 import en_vectors_web_lg
 LOAD_FROM_PICKLE = True
 
@@ -44,14 +44,6 @@ class WeVectorizer:
     def vectorize_ent(self, org_candidate):
         return np.array([t.vector for t in self.vectorizer(org_candidate)]).mean(axis=0)
 
-    # def train_test(self):
-    #     fit_params={'early_stopping_rounds':10, 'eval_set':[(xvalid_tfidf_ngram_chars, valid_y)]}
-    #     if num_gpu>0:    # Config for GPU
-    #         df_results = df_results.append(report(XGBClassifier(tree_method='gpu_hist',n_estimators=1000, subsample=0.8), xtrain_tfidf_ngram_chars,train_y, xvalid_tfidf_ngram_chars, valid_y, name='XGB_CharLevel_TF-IDF', cv=CV_splits, fit_params=fit_params, dict_scoring=score_metrics, save=save_model))
-    #     else:
-    #         df_results = df_results.append(report(XGBClassifier(n_estimators=1000, subsample=0.8), xtrain_tfidf_ngram_chars,train_y, xvalid_tfidf_ngram_chars, valid_y, name='XGB_CharLevel_TF-IDF', cv=CV_splits, fit_params=fit_params, dict_scoring=score_metrics, save=save_model))
-    #     if save_results:
-    #         df_results.to_csv(NAME_SAVE_FILE+".csv", sep=";", index=False)
 
 def main():
     # model_name = "glove_300_xgboost_sub_sample_defualt_ne_50_sent"
