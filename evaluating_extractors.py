@@ -43,21 +43,21 @@ class FlairExtractor(Extractor):
         return d
 
 
-def process_data(path):
-    i2sent = {}
-    i2relations = defaultdict(list)
-    with open(path) as f:
-        lines = f.readlines()
-        for line in lines:
-            idx, arg0, relation, arg1, sentence = line.split("\t")
-            i2sent[idx] = sentence
-            i2relations[idx].append((arg0, relation, arg1))
-    return i2sent, i2relations
-
-i2sent, i2relations = process_data('data/TRAIN.annotations.tsv')
-
-spacy_extractor = SpacyExtractor()
-flair_extractor = FlairExtractor()
+# def process_data(path):
+#     i2sent = {}
+#     i2relations = defaultdict(list)
+#     with open(path) as f:
+#         lines = f.readlines()
+#         for line in lines:
+#             idx, arg0, relation, arg1, sentence = line.split("\t")
+#             i2sent[idx] = sentence
+#             i2relations[idx].append((arg0, relation, arg1))
+#     return i2sent, i2relations
+#
+# i2sent, i2relations = process_data('data/TRAIN.annotations.tsv')
+#
+# spacy_extractor = SpacyExtractor()
+# flair_extractor = FlairExtractor()
 
 work_for = 'Work_For'
 def get_relevant_ents(relations) -> Dict[str, set]:

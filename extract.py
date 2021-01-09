@@ -29,7 +29,7 @@ SPAN = "span"
 
 TRAIN_F = "train_data.pkl"
 TEST_F = "test_data.pkl"
-LOAD_FROM_PICKLE = False
+LOAD_FROM_PICKLE = True
 model_name = "model_XGB_1000_ww_other_improve_entities"
 
 
@@ -286,11 +286,15 @@ def load_from_pickle(f_name):
     return data
 
 
-def train_model(labels, vectors):
+def train_model(labels, vectors, n_est, xgb):
     # model = RandomForestClassifier(n_estimators=1000)
     # model = LogisticRegression(max_iter=1000)
     # model = SGDClassifier(max_iter=1000)
-    model = XGBClassifier()
+    if xgb == "XGB":
+        model = XGBClassifier(n_estimators=n_est)
+    else:
+        model = RandomForestClassifier(n_estimators=n_est)
+
     model.fit(vectors, labels)
     return model
 
@@ -314,8 +318,8 @@ def select_features(model, vectors, labels, features_names):
     return json.dumps(f_sorted, ensure_ascii=False, indent=4)
 
 
-def write_results(op_relations, predicted_labels):
-    with open("PRED.annotations.txt", "w") as f_res:
+def write_results(op_relations, predicted_labels, ent_n, xgb):
+    with open(f"PRED.annotations_{str(ent_n)}_{xgb}.txt", "w") as f_res:
         for i, (idx, person, org, sentence) in enumerate(op_relations):
             if predicted_labels[i] == "1":
                 f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
@@ -333,11 +337,14 @@ def main():
         save_to_pickle(test, TEST_F)
 
     vectorizer = RelationsVectorizer(train, test)
-    model = train_model(vectorizer.train_labels, vectorizer.train_vectors)
-    save_to_pickle(model, f"models/{model_name}.pkl")
-    predicted_labels = predict(model, vectorizer.test_vectors)
 
-    write_results(test.op_relations, predicted_labels)
+    # save_to_pickle(model, f"models/{model_name}.pkl")
+    for ent_n in [50, 100, 200, 1000]:
+        for xgb in ["XGB", "RF"]:
+            model = train_model(vectorizer.train_labels, vectorizer.train_vectors, ent_n, xgb)
+            predicted_labels = predict(model, vectorizer.test_vectors)
+
+            write_results(test.op_relations, predicted_labels, ent_n, xgb)
 
     ranked_features = select_features(model, vectorizer.train_vectors, vectorizer.train_labels, vectorizer.dv.feature_names_)
     print(ranked_features)
