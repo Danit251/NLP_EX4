@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Any, Union
 from tqdm import tqdm
 
 from extractors import SpacyExtractor, FlairExtractor
@@ -39,7 +39,7 @@ def run_evaluation():
     flair_score = 0
     combined_score = 0
     combined_real_score = 0
-    combined_real_score_danit = 0
+
     for i, sent in tqdm(i2sent.items()):
         relations = i2relations[i]
         rel_ents = get_relevant_ents(relations)
@@ -51,6 +51,8 @@ def run_evaluation():
 
         for ent_type, ents in rel_ents.items():
             s = spacy_pred[ent_type] if ent_type in spacy_pred else []
+            i: Union[str, Any]
+
             s = set([i['text'] for i in s])
             f = flair_pred[ent_type] if ent_type in flair_pred else []
             f = set([i['text'] for i in f])
@@ -61,24 +63,18 @@ def run_evaluation():
 
                 combined_score += 1 if ent in f or ent in s else 0
                 is_combined_real_score = False
-                is_danit = False
                 if ent not in f and ent in s:
                     is_combined_real_score = True
-                if ent not in f and any([ent in i or i in ent for i in s]):
-                    if 'MISC' in flair_pred and ent in flair_pred['MISC']:
-                        is_danit = True
-
                 combined_real_score += 1 if ent in f or ent in s or is_combined_real_score else 0
-                combined_real_score_danit += 1 if ent in f or ent in s or is_danit else 0
+
     print(f"flair score {(flair_score / total) * 100}%")
     print(f"spacy score {(spacy_score / total) * 100}%")
     print(f"combined score {(combined_score / total) * 100}%")
     print(f"combined real score {(combined_real_score / total) * 100}%")
-    print(f"combined real score {(combined_real_score_danit / total) * 100}%")
 
 
-# if __name__ == '__main__':
-#     run_evaluation()
+if __name__ == '__main__':
+    run_evaluation()
 
 
 
