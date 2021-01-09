@@ -5,7 +5,6 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, matthews_corrcoef
 from tqdm import tqdm
 import numpy as np
 import pickle
@@ -286,15 +285,11 @@ def load_from_pickle(f_name):
     return data
 
 
-def train_model(labels, vectors, n_est, xgb):
+def train_model(labels, vectors):
     # model = RandomForestClassifier(n_estimators=1000)
     # model = LogisticRegression(max_iter=1000)
     # model = SGDClassifier(max_iter=1000)
-    if xgb == "XGB":
-        model = XGBClassifier(n_estimators=n_est)
-    else:
-        model = RandomForestClassifier(n_estimators=n_est)
-
+    model = XGBClassifier(n_estimators=100)
     model.fit(vectors, labels)
     return model
 
@@ -318,8 +313,8 @@ def select_features(model, vectors, labels, features_names):
     return json.dumps(f_sorted, ensure_ascii=False, indent=4)
 
 
-def write_results(op_relations, predicted_labels, ent_n, xgb):
-    with open(f"PRED.annotations_{str(ent_n)}_{xgb}.txt", "w") as f_res:
+def write_results(f_name, op_relations, predicted_labels, ent_n, xgb):
+    with open(f_name, "w") as f_res:
         for i, (idx, person, org, sentence) in enumerate(op_relations):
             if predicted_labels[i] == "1":
                 f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
@@ -339,33 +334,11 @@ def main():
     vectorizer = RelationsVectorizer(train, test)
 
     # save_to_pickle(model, f"models/{model_name}.pkl")
-    for ent_n in [50, 100, 200, 1000]:
-        for xgb in ["XGB", "RF"]:
-            model = train_model(vectorizer.train_labels, vectorizer.train_vectors, ent_n, xgb)
-            predicted_labels = predict(model, vectorizer.test_vectors)
+    model = train_model(vectorizer.train_labels, vectorizer.train_vectors)
+    predicted_labels = predict(model, vectorizer.test_vectors)
 
-            write_results(test.op_relations, predicted_labels, ent_n, xgb)
-
-    ranked_features = select_features(model, vectorizer.train_vectors, vectorizer.train_labels, vectorizer.dv.feature_names_)
-    print(ranked_features)
-
-    report = classification_report(vectorizer.test_labels, predicted_labels)
-    print(report)
-    mcc = matthews_corrcoef(vectorizer.test_labels, predicted_labels)
-    print(f"MCC: {mcc}")
-    with open(f"models/report_{model_name}", "w") as f:
-        f.write(f"model name: {model_name}\n")
-        f.write(report)
-        f.write("\n~~~~~~~~~~\n")
-        f.write(f"MCC: {mcc}")
-        f.write("\n~~~~~~~~~~\n")
-        f.write(f"Rank: {ranked_features}")
+    write_results(f"PRED.annotations.txt", test.op_relations, predicted_labels)
 
 
 if __name__ == '__main__':
     main()
-    # sentence = "Today 's Highlight in History : Twenty years ago , on June 6 , 1968 , at 1 : 44 a.m. local time , Sen. Robert F. Kennedy died at Good Samaritan Hospital in Los Angeles , 25 hours after he was shot at the Ambassador Hotel by Sirhan Bishara Sirhan ."
-    # doc = nlp(sentence)
-    # e = EntitiesExtraction()
-    # entities = e.extract(sentence, doc)
-    # print(entities)

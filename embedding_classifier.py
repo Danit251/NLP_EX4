@@ -11,6 +11,7 @@ from eval import load_from_pickle, ProcessAnnotatedData, save_to_pickle, TRAIN_F
 import en_vectors_web_lg
 LOAD_FROM_PICKLE = True
 
+
 class WeVectorizer:
     def __init__(self,  train_data, test_data):
         self.vectorizer = en_vectors_web_lg.load()

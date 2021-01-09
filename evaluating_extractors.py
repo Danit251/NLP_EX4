@@ -6,6 +6,7 @@ from extractors import SpacyExtractor, FlairExtractor
 
 work_for = 'Work_For'
 
+
 def process_data(path):
     i2sent = {}
     i2relations = defaultdict(list)
@@ -16,7 +17,6 @@ def process_data(path):
             i2sent[idx] = sentence
             i2relations[idx].append((arg0, relation, arg1))
     return i2sent, i2relations
-
 
 
 def get_relevant_ents(relations) -> Dict[str, set]:
