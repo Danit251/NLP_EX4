@@ -28,7 +28,7 @@ SPAN = "span"
 
 TRAIN_F = "train_data.pkl"
 TEST_F = "test_data.pkl"
-LOAD_FROM_PICKLE = True
+LOAD_FROM_PICKLE = False
 model_name = "model_XGB_1000_ww_other_improve_entities"
 
 
