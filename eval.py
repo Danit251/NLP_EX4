@@ -15,12 +15,13 @@ from xgboost import XGBClassifier
 from sklearn.feature_selection import RFE
 import json
 from evaluating_extractors import FlairExtractor, SpacyExtractor
+from itertools import product
 
 # load spacy
 nlp = en_core_web_md.load()
 
 # load the NER tagger
-tagger = SequenceTagger.load('ner')
+# tagger = SequenceTagger.load('ner')
 
 RELATION = "Work_For"
 PERSON = "PER"
@@ -33,7 +34,6 @@ TRAIN_F = "train_data.pkl"
 TEST_F = "test_data.pkl"
 # MODEL_F = f"model.pkl"
 LOAD_FROM_PICKLE = False
-extractor = EntitiesExtraction()
 
 
 class RelationsVectorizer:
@@ -41,11 +41,11 @@ class RelationsVectorizer:
     def __init__(self, train_data, test_data):
         self.dv = DictVectorizer()
 
-        self.train_features = self.get_features(train_data.op_relations)
+        self.train_features = self.get_features(train_data.i2sentence, train_data.gold_relations)
         self.stat = self.create_features_stat()
         self.norm_features(self.train_features)
         self.norm_stat = self.create_features_stat()
-        self.test_features = self.get_features(test_data.op_relations)
+        self.test_features = self.get_features(test_data.i2sentence, test_data.gold_relations)
 
         self.train_vectors = self.dv.fit_transform(self.train_features)
         self.train_labels = train_data.labels
@@ -75,18 +75,18 @@ class RelationsVectorizer:
 
         return stat
 
-    def get_features(self, relations):
+    def get_features(self, i2sentences, relations):
         features = []
         for relation in relations:
-            feature = self.get_relation_features(relation)
+            feature = self.get_relation_features(relation, i2sentences[relation[0]])
             features.append(feature)
         return features
 
-    def get_relation_features(self, relation):
+    def get_relation_features(self, relation, sentence):
         features = {}
         for f_feature in [self.f_pre_pos, self.f_after_pos, self.f_distance_in_sentence, self.f_distance_in_tree,
                           self.f_cur_pos]:
-            f_feature(features, relation[1], relation[2], relation[3])
+            f_feature(features, relation[1], relation[2], sentence)
         return features
 
     def f_pre_pos(self, features, person, org, sentence):
@@ -113,17 +113,20 @@ class RelationsVectorizer:
         return features
 
     def f_after_pos(self, features, person, org, sentence):
-        person_start_index = person[SPAN][0]
-        if person_start_index != 0:
-            features["pre_person_pos"] = sentence.analyzed[person_start_index + 1].pos_
-        else:
-            features["pre_person_pos"] = "END"
+        person_end_index = person[SPAN][1]
+        try:
+            if person_end_index != len(sentence.analyzed.doc) - 1:
+                features["after_person_pos"] = sentence.analyzed[person_end_index + 1].pos_
+            else:
+                features["after_person_pos"] = "END"
+        except Exception as error:
+            pass
 
-        org_start_index = org[SPAN][0]
-        if org_start_index != 0:
-            features["pre_org_pos"] = sentence.analyzed[org_start_index + 1].pos_
+        org_end_index = org[SPAN][1]
+        if org_end_index != len(sentence.analyzed.doc) - 1:
+            features["after_org_pos"] = sentence.analyzed[org_end_index + 1].pos_
         else:
-            features["pre_org_pos"] = "END"
+            features["after_org_pos"] = "END"
 
     def f_distance_in_sentence(self, features, person, org, sentence):
         person_start_index = person[SPAN][0]
@@ -163,6 +166,7 @@ class ProcessAnnotatedData:
                 if idx not in i2relations:
                     sentences[idx] = RelationSentence(idx, sentence)
                 i2relations[idx].append((arg0, relation, arg1))
+
         return sentences, i2relations
 
     def get_relations(self):
@@ -184,28 +188,35 @@ class ProcessAnnotatedData:
             return True
         return False
 
-class Singleton(type):
-    _instances = {}
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
-        return cls._instances[cls]
+
+def singleton(cls):
+    instances = {}
+
+    def get_instance():
+        if cls not in instances:
+            instances[cls] = cls()
+        return instances[cls]
+    return get_instance
 
 
+@singleton
 class EntitiesExtraction:
-    __metaclass__ = Singleton
 
     def __init__(self):
         self.ext_spacy = SpacyExtractor()
         self.ext_flair = FlairExtractor()
 
-    def extract(self, sentence):
+    def extract(self, sentence, analyzed_sent):
         spacy_entities = self.ext_spacy.extract(sentence)
         flair_entities = self.ext_flair.extract(sentence)
+        self.update_offsets(flair_entities, analyzed_sent)
+
         res = defaultdict(list)
         for ent_type in [PERSON, ORG]:
             s = spacy_entities[ent_type] if ent_type in spacy_entities else []
             f = flair_entities[ent_type] if ent_type in flair_entities else []
+            if "Sirhan Bishara Sirhan" in s or "Sirhan Bishara Sirhan" in f:
+                pass
             if len(f) >= len(s):
                 res[ent_type] = f
             else:
@@ -214,7 +225,7 @@ class EntitiesExtraction:
 
                     # if finds entity in flair insert it
                     for ent_f in f:
-                        if ent_s in ent_f or ent_f in ent_s:
+                        if ent_s[TEXT] in ent_f[TEXT] or ent_f[TEXT] in ent_s[TEXT]:
                             res[ent_type].append(ent_f)
                             inserted = True
                             break
@@ -225,29 +236,25 @@ class EntitiesExtraction:
 
         return res
 
+    def update_offsets(self, entities, analyzed_sent):
+        for type_entity in entities:
+            for entity in entities[type_entity]:
+                for word in analyzed_sent:
+                    if entity[SPAN][0] == word.idx:
+                        entity[SPAN] = (word.i, word.i + entity[SPAN][1] - 1)
+
 
 class RelationSentence:
 
     def __init__(self, idx, sentence):
-        sentence = sentence.replace("-LRB-", "(").replace("-RRB-", ")").strip("()\n ")
+        sentence = sentence.replace("-LRB-", "(").replace("-RRB-", ")").replace("-LCB-", "").strip("()\n ")
         self.idx = idx
         self.text = sentence
-        # self.ner = Sentence(sentence)
         self.analyzed = nlp(sentence)
-        # tagger.predict(self.ner)
-        self.entities = [{TEXT: ne.text, TYPE: ne.tag, SPAN: (ne.tokens[0].idx - 1, ne.tokens[-1].idx - 1)} for ne in self.ner.get_spans() if ne.tag in [PERSON, ORG]]
-        self.op_relations = self.get_optional_relations()
-
-    def get_optional_relations(self):
-        op_relations = []
-        persons = [{TEXT: ne[TEXT], SPAN: ne[SPAN]} for ne in self.entities if ne[TYPE] == PERSON]
-        orgs = [{TEXT: ne[TEXT], SPAN: ne[SPAN]} for ne in self.entities if ne[TYPE] == ORG]
-
-        for person in persons:
-            for org in orgs:
-                op_relations.append((person, org))
-
-        return op_relations
+        extractor = EntitiesExtraction()
+        self.entities = extractor.extract(sentence, self.analyzed)
+        self.op_relations = list(product(self.entities[PERSON], self.entities[ORG]))
+        print()
 
 
 def save_to_pickle(data, f_name):
@@ -289,7 +296,7 @@ def select_features(model, vectors, labels, features_names):
     return json.dumps(f_sorted, ensure_ascii=False, indent=4)
 
 
-model_name = "model_XGB_1000_ww_other"
+model_name = "model_XGB_1000_ww_other_improve_entities"
 
 
 def main():
@@ -324,7 +331,9 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    e = EntitiesExtraction()
-    entities = e.extract("STOCKTON-ON-TEES , England ( AP ) _ Michael Minns received $160 , 000 from the father he never knew and thought was killed in World War II .")
-    print(entities)
+    main()
+    # sentence = "Today 's Highlight in History : Twenty years ago , on June 6 , 1968 , at 1 : 44 a.m. local time , Sen. Robert F. Kennedy died at Good Samaritan Hospital in Los Angeles , 25 hours after he was shot at the Ambassador Hotel by Sirhan Bishara Sirhan ."
+    # doc = nlp(sentence)
+    # e = EntitiesExtraction()
+    # entities = e.extract(sentence, doc)
+    # print(entities)

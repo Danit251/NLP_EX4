@@ -23,7 +23,7 @@ class SpacyExtractor(Extractor):
     def extract(self, sentence: str) -> Dict[str, List[str]]:
         doc = self.nlp(sentence)
         d = sorted([(e.label_.replace("PERSON", "PER"), {"text": e.text, "span": (e.start, e.end - 1)}) for e in doc.ents if e.label_ in self.valid_entity_types], key=lambda t: t[0])
-        d = {k: list(map(lambda t:t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
+        d = {k: list(map(lambda t: t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
         return d
 
 
@@ -36,27 +36,27 @@ class FlairExtractor(Extractor):
     def extract(self, sentence: str) -> Dict[str, List[str]]:
         doc = Sentence(sentence)
         self.nlp.predict(doc)
-        d = sorted([(e.tag, {"text": e.text.strip('?!. '), "span": (e.tokens[0].idx - 1, e.tokens[-1].idx - 1)}) for e in doc.get_spans('ner') if e.tag in self.valid_entity_types],
+        d = sorted([(e.tag, {"text": e.text, "span": (e.tokens[0].start_pos, len(e.tokens))}) for e in doc.get_spans('ner') if e.tag in self.valid_entity_types],
                      key=lambda t: t[0])
         d = {k: list(map(lambda t: t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
         return d
 
-
-def process_data(path):
-    i2sent = {}
-    i2relations = defaultdict(list)
-    with open(path) as f:
-        lines = f.readlines()
-        for line in lines:
-            idx, arg0, relation, arg1, sentence = line.split("\t")
-            i2sent[idx] = sentence
-            i2relations[idx].append((arg0, relation, arg1))
-    return i2sent, i2relations
-
-i2sent, i2relations = process_data('data/TRAIN.annotations.tsv')
-
-spacy_extractor = SpacyExtractor()
-flair_extractor = FlairExtractor()
+#
+# def process_data(path):
+#     i2sent = {}
+#     i2relations = defaultdict(list)
+#     with open(path) as f:
+#         lines = f.readlines()
+#         for line in lines:
+#             idx, arg0, relation, arg1, sentence = line.split("\t")
+#             i2sent[idx] = sentence
+#             i2relations[idx].append((arg0, relation, arg1))
+#     return i2sent, i2relations
+#
+# i2sent, i2relations = process_data('data/TRAIN.annotations.tsv')
+#
+# spacy_extractor = SpacyExtractor()
+# flair_extractor = FlairExtractor()
 
 work_for = 'Work_For'
 def get_relevant_ents(relations) -> Dict[str, set]:
@@ -114,8 +114,8 @@ def run_evaluation():
     print(f"combined real score {(combined_real_score_danit / total) * 100}%")
 
 
-if __name__ == '__main__':
-    run_evaluation()
+# if __name__ == '__main__':
+#     run_evaluation()
 
 
 
