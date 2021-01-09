@@ -1,5 +1,7 @@
 from extract import load_from_pickle, predict, select_features, write_results, TRAIN_F, TEST_F, RelationsVectorizer, XGBClassifier
 from sklearn.metrics import classification_report, matthews_corrcoef
+from sklearn.ensemble import RandomForestClassifier
+
 
 train = load_from_pickle(TRAIN_F)
 test = load_from_pickle(TEST_F)
@@ -8,7 +10,11 @@ vectorizer = RelationsVectorizer(train, test)
 # save_to_pickle(model, f"models/{model_name}.pkl")
 for ent_n in [50, 100, 200, 1000]:
     for xgb in ["XGB", "RF"]:
-        model = XGBClassifier(n_estimators=100)
+        if xgb == "XGB":
+            model = XGBClassifier(n_estimators=ent_n)
+        else:
+            model = RandomForestClassifier(n_estimators=ent_n)
+
         model.fit(vectorizer.train_vectors, vectorizer.train_labels)
 
         predicted_labels = predict(model, vectorizer.test_vectors)
