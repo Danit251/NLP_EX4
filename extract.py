@@ -14,7 +14,7 @@ import sys
 from xgboost import XGBClassifier
 from sklearn.feature_selection import RFE
 import json
-from evaluating_extractors import FlairExtractor, SpacyExtractor
+from extractors import SpacyExtractor, FlairExtractor
 from itertools import product
 
 # load spacy
