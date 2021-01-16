@@ -1,6 +1,9 @@
-from extract import load_from_pickle, predict, select_features, write_results, TRAIN_F, TEST_F, RelationsVectorizer, XGBClassifier, ProcessAnnotatedData, RelationSentence
+from extract import load_from_pickle, predict, TRAIN_F, TEST_F, RelationsVectorizer, XGBClassifier, ProcessAnnotatedData, RelationSentence
+from common import write_results
 from sklearn.metrics import classification_report, matthews_corrcoef
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import RFE
+import json
 
 
 train = load_from_pickle(TRAIN_F)
@@ -8,6 +11,20 @@ test = load_from_pickle(TEST_F)
 
 vectorizer = RelationsVectorizer(train, test)
 # save_to_pickle(model, f"models/{model_name}.pkl")
+
+def select_features(model, vectors, labels, features_names):
+    rfe = RFE(model, 1)
+    fit = rfe.fit(vectors, labels)
+    print("Num Features: %d" % fit.n_features_)
+    print("Selected Features: %s" % fit.support_)
+    print("Feature Ranking: %s" % list(fit.ranking_))
+    rank = list(fit.ranking_)
+    merge = {item: int(rank[i]) for i, item in enumerate(features_names)}
+    f_sorted = {k: v for k, v in sorted(merge.items(), key=lambda item: item[1])}
+    return json.dumps(f_sorted, ensure_ascii=False, indent=4)
+
+
+
 for ent_n in [50, 100, 200, 1000]:
     for xgb in ["XGB", "RF"]:
         if xgb == "XGB":

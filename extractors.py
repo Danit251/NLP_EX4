@@ -40,3 +40,5 @@ class FlairExtractor(Extractor):
                      key=lambda t: t[0])
         d = {k: list(map(lambda t: t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
         return d
+
+
