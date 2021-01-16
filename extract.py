@@ -26,15 +26,48 @@ TEXT = "text"
 TYPE = "type"
 SPAN = "span"
 
-TRAIN_F = "train_data.pkl"
-TEST_F = "test_data.pkl"
-LOAD_FROM_PICKLE = False
-model_name = "model_XGB_1000_ww_other_improve_entities"
+TRAIN_F = "train_data_embedding.pkl"
+TEST_F = "test_data_embedding.pkl"
+LOAD_FROM_PICKLE = True
+model_name = "model_XGB_1000_feat_deps"
+
+
+class WeVectorizer:
+    def __init__(self,  train_data, test_data):
+        self.vectorizer = en_core_web_md.load()
+        self.train_vec = self.vectorizer_data(train_data.op_relations)
+        self.train_labels = train_data.labels
+
+        self.test_vec = self.vectorizer_data(test_data.op_relations)
+        self.test_labels = test_data.labels
+
+    def vectorizer_data(self, relations):
+        vecs = []
+        for sent_id, per_cand, org_cand, sent_raw  in relations:
+            sent = sent_raw.strip("().\n")
+            org = org_cand['text']
+            per = per_cand['text']
+            sent_clean = sent.replace(org, "").replace(per, "")
+            vecs.append(self.vec_sent(sent_clean, per, org))
+        vecs = np.array(vecs)
+        return vecs
+
+    def vec_sent(self, sent, per_candidate, org_candidate):
+            toks = [t for t in self.vectorizer(sent) if not any([t.is_space, t.is_punct, t.is_stop, t.is_currency]) and t.has_vector]
+            sent_vecs = np.array([t.vector for t in toks]).mean(axis=0)
+            per_vec = self.vectorize_ent(per_candidate)
+            org_vec = self.vectorize_ent(org_candidate)
+            res = np.concatenate([sent_vecs, per_vec, org_vec])
+            return res
+
+    def vectorize_ent(self, org_candidate):
+        return np.array([t.vector for t in self.vectorizer(org_candidate)]).mean(axis=0)
 
 
 class RelationsVectorizer:
 
     def __init__(self, train_data, test_data):
+        # self.embedding_vectorizer = WeVectorizer(train_data, test_data)
         self.dv = DictVectorizer()
 
         self.train_features = self.get_features(train_data.i2sentence, train_data.op_relations)
@@ -43,12 +76,24 @@ class RelationsVectorizer:
         # self.norm_stat = self.create_features_stat()
         self.test_features = self.get_features(test_data.i2sentence, test_data.op_relations)
 
-        self.train_vectors = self.dv.fit_transform(self.train_features)
+        # self.e_train_vectors = self.embedding_vectorizer.train_vec
+        # self.f_train_vectors = self.dv.fit_transform(self.train_features).toarray()
+        # self.train_vectors = self.merge_vectors(self.f_train_vectors, self.e_train_vectors)
+        self.train_vectors = self.dv.fit_transform(self.train_features).toarray()
         self.train_labels = train_data.labels
 
-        self.test_vectors = self.dv.transform(self.test_features)
+        # self.e_test_vectors = self.embedding_vectorizer.test_vec
+        # self.f_test_vectors = self.dv.transform(self.test_features).toarray()
+        # self.test_vectors = self.merge_vectors(self.f_test_vectors, self.e_test_vectors)
+        self.test_vectors = self.dv.transform(self.test_features).toarray()
         self.test_labels = test_data.labels
         print(self.dv.feature_names_)
+
+    def merge_vectors(self, feat_vectors, embedding_vectors):
+        merged = []
+        for f_vec, e_vec in zip(feat_vectors, embedding_vectors):
+            merged.append(np.concatenate([f_vec, e_vec]))
+        return np.array(merged)
 
     def norm_features(self, features):
         for f_dict in features:
@@ -135,9 +180,15 @@ class RelationsVectorizer:
         org_start_index = org[SPAN][0]
         cur_head = sentence.analyzed[org_start_index]
         dist = 1
+        # all_deps = defaultdict(int)
         while cur_head.dep_ != "ROOT" and (person_start_index > cur_head.i or cur_head.i > person_end_index):
             dist += 1
             cur_head = cur_head.head
+        #     all_deps[f"dep_{cur_head.dep_}"] += 1
+        #
+        # if cur_head.dep_ != "ROOT":
+        #     all_deps[f"dep_{cur_head.dep_}"] += 1
+        #     features.update(all_deps)
 
         if cur_head.dep_ == "ROOT":
             features["dist_tree"] = 0
@@ -289,7 +340,7 @@ def train_model(labels, vectors):
     # model = RandomForestClassifier(n_estimators=1000)
     # model = LogisticRegression(max_iter=1000)
     # model = SGDClassifier(max_iter=1000)
-    model = XGBClassifier(n_estimators=100)
+    model = XGBClassifier(n_estimators=1000)
     model.fit(vectors, labels)
     return model
 
@@ -314,10 +365,13 @@ def select_features(model, vectors, labels, features_names):
 
 
 def write_results(f_name, op_relations, predicted_labels):
+    rel_set = set()
     with open(f_name, "w") as f_res:
         for i, (idx, person, org, sentence) in enumerate(op_relations):
-            if predicted_labels[i] == "1":
+            rel_str = "_".join([idx, person[TEXT], RELATION, org[TEXT]])
+            if predicted_labels[i] == "1" and rel_str not in rel_set:
                 f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
+                rel_set.add(rel_str)
 
 
 def main():
@@ -333,11 +387,10 @@ def main():
 
     vectorizer = RelationsVectorizer(train, test)
 
-    # save_to_pickle(model, f"models/{model_name}.pkl")
     model = train_model(vectorizer.train_labels, vectorizer.train_vectors)
-    predicted_labels = predict(model, vectorizer.test_vectors)
-
-    write_results(f"PRED.annotations.txt", test.op_relations, predicted_labels)
+    save_to_pickle(model, f"models/{model_name}.pkl")
+    predicted_labels = model.predict(vectorizer.test_vectors)
+    write_results(f"PRED.annotations_{model_name}.txt", test.op_relations, predicted_labels)
 
 
 if __name__ == '__main__':

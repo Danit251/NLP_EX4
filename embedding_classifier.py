@@ -1,5 +1,5 @@
 import functools
-
+# tokenized=map(lambda msg, ft1, ft2: features([msg,ft1,ft2]), posts.message,posts.feature_1, posts.feature_2)
 import numpy as np
 import sys
 
@@ -8,13 +8,13 @@ from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.metrics import classification_report, matthews_corrcoef
 from xgboost import XGBClassifier
 from extract import load_from_pickle, ProcessAnnotatedData, save_to_pickle, TRAIN_F, TEST_F
-import en_vectors_web_lg
+import en_core_web_md
 LOAD_FROM_PICKLE = True
 
 
 class WeVectorizer:
     def __init__(self,  train_data, test_data):
-        self.vectorizer = en_vectors_web_lg.load()
+        self.vectorizer = en_core_web_md.load()
         self.train_vec = self.vectorizer_data(train_data.op_relations)
         self.train_labels = train_data.labels
 
@@ -40,7 +40,6 @@ class WeVectorizer:
             res = np.concatenate([sent_vecs, per_vec, org_vec])
             return res
 
-
     def vectorize_ent(self, org_candidate):
         return np.array([t.vector for t in self.vectorizer(org_candidate)]).mean(axis=0)
 
@@ -59,10 +58,10 @@ def main():
         save_to_pickle(test, TEST_F)
 
     vectorizer = WeVectorizer(train, test)
-    # model = XGBClassifier(n_estimators=50)
+    model = XGBClassifier(n_estimators=1000)
     # model = RandomForestClassifier(n_estimators=20)
     # model = LogisticRegression(max_iter=1000)
-    model = SGDClassifier(max_iter=1000)
+    # model = SGDClassifier(max_iter=1000)
     model.fit(vectorizer.train_vec, vectorizer.train_labels)
     save_to_pickle(model, f"models/{model_name}.pkl")
 
@@ -75,7 +74,6 @@ def main():
     with open(f"models/report_{model_name}.txt", "w") as f:
         f.write(f"mcc: {mcc}\n")
         f.write(report)
-
 
 
 if __name__ == '__main__':

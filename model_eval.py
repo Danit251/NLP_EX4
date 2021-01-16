@@ -1,4 +1,4 @@
-from extract import load_from_pickle, predict, select_features, write_results, TRAIN_F, TEST_F, RelationsVectorizer, XGBClassifier
+from extract import load_from_pickle, predict, select_features, write_results, TRAIN_F, TEST_F, RelationsVectorizer, XGBClassifier, ProcessAnnotatedData, RelationSentence
 from sklearn.metrics import classification_report, matthews_corrcoef
 from sklearn.ensemble import RandomForestClassifier
 
