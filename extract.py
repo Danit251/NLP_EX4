@@ -29,7 +29,7 @@ SPAN = "span"
 TRAIN_F = "train_data_embedding.pkl"
 TEST_F = "test_data_embedding.pkl"
 LOAD_FROM_PICKLE = True
-model_name = "model_XGB_1000_merge_word_embeddings"
+model_name = "model_XGB_1000_feat_deps"
 
 
 class WeVectorizer:
@@ -67,7 +67,7 @@ class WeVectorizer:
 class RelationsVectorizer:
 
     def __init__(self, train_data, test_data):
-        self.embedding_vectorizer = WeVectorizer(train_data, test_data)
+        # self.embedding_vectorizer = WeVectorizer(train_data, test_data)
         self.dv = DictVectorizer()
 
         self.train_features = self.get_features(train_data.i2sentence, train_data.op_relations)
@@ -76,14 +76,16 @@ class RelationsVectorizer:
         # self.norm_stat = self.create_features_stat()
         self.test_features = self.get_features(test_data.i2sentence, test_data.op_relations)
 
-        self.e_train_vectors = self.embedding_vectorizer.train_vec
-        self.f_train_vectors = self.dv.fit_transform(self.train_features).toarray()
-        self.train_vectors = self.merge_vectors(self.f_train_vectors, self.e_train_vectors)
+        # self.e_train_vectors = self.embedding_vectorizer.train_vec
+        # self.f_train_vectors = self.dv.fit_transform(self.train_features).toarray()
+        # self.train_vectors = self.merge_vectors(self.f_train_vectors, self.e_train_vectors)
+        self.train_vectors = self.dv.fit_transform(self.train_features).toarray()
         self.train_labels = train_data.labels
 
-        self.e_test_vectors = self.embedding_vectorizer.test_vec
-        self.f_test_vectors = self.dv.transform(self.test_features).toarray()
-        self.test_vectors = self.merge_vectors(self.f_test_vectors, self.e_test_vectors)
+        # self.e_test_vectors = self.embedding_vectorizer.test_vec
+        # self.f_test_vectors = self.dv.transform(self.test_features).toarray()
+        # self.test_vectors = self.merge_vectors(self.f_test_vectors, self.e_test_vectors)
+        self.test_vectors = self.dv.transform(self.test_features).toarray()
         self.test_labels = test_data.labels
         print(self.dv.feature_names_)
 
@@ -178,9 +180,15 @@ class RelationsVectorizer:
         org_start_index = org[SPAN][0]
         cur_head = sentence.analyzed[org_start_index]
         dist = 1
+        # all_deps = defaultdict(int)
         while cur_head.dep_ != "ROOT" and (person_start_index > cur_head.i or cur_head.i > person_end_index):
             dist += 1
             cur_head = cur_head.head
+        #     all_deps[f"dep_{cur_head.dep_}"] += 1
+        #
+        # if cur_head.dep_ != "ROOT":
+        #     all_deps[f"dep_{cur_head.dep_}"] += 1
+        #     features.update(all_deps)
 
         if cur_head.dep_ == "ROOT":
             features["dist_tree"] = 0
@@ -380,7 +388,7 @@ def main():
     vectorizer = RelationsVectorizer(train, test)
 
     model = train_model(vectorizer.train_labels, vectorizer.train_vectors)
-    # save_to_pickle(model, f"models/{model_name}.pkl")
+    save_to_pickle(model, f"models/{model_name}.pkl")
     predicted_labels = model.predict(vectorizer.test_vectors)
     write_results(f"PRED.annotations_{model_name}.txt", test.op_relations, predicted_labels)
 
