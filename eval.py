@@ -22,6 +22,7 @@ if __name__ == '__main__':
     total_gold = sum([len(v) for v in gold_relation.values()])
     total_pred = sum([len(v) for v in pred_relation.values()])
     correct = 0
+    correct_gen = 0
     examples_wrong = []
 
     for sent_id, pred_relation_list in pred_relation.items():
@@ -33,16 +34,28 @@ if __name__ == '__main__':
                     if per_gold == per_pred and org_gold == org_pred:
                         suc = True
                         correct += 1
+                        correct_gen += 1
+                    elif (per_gold in per_pred or per_pred in per_gold) and (org_gold in org_pred or org_pred in org_gold):
+                        correct_gen += 1
             if not suc:
                 examples_wrong.append((per_pred, org_pred, sentence))
 
     precision = round((correct / total_pred) * 100, 2)
     recall = round((correct / total_gold) * 100, 2)
     f1 = round((2 * precision * recall) / (precision + recall), 2)
+    print("Regular accuracy:")
     print(f"precision: {precision}%")
     print(f"recall: {recall}%")
     print(f"f1: {f1}%")
 
+    print()
+    precision_gen = round((correct_gen / total_pred) * 100, 2)
+    recall_gen = round((correct_gen / total_gold) * 100, 2)
+    f1_gen = round((2 * precision_gen * recall_gen) / (precision_gen + recall_gen), 2)
+    print("Generalized accuracy:")
+    print(f"precision: {precision_gen}%")
+    print(f"recall: {recall_gen}%")
+    print(f"f1: {f1_gen}%")
 
 
 
