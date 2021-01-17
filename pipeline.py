@@ -1,7 +1,9 @@
 import pickle
 import os
-from typing import Tuple
-
+from collections import defaultdict
+from itertools import product
+from typing import Tuple, List, Dict
+from common import  PERSON,ORG
 import numpy as np
 from xgboost import XGBClassifier
 from sklearn.linear_model import LogisticRegression
@@ -12,6 +14,8 @@ from data_processor import ProcessAnnotatedData
 from common import write_results
 from relation_vectorizer import RelationsVectorizer
 
+from itertools import chain
+from operator import methodcaller
 
 class MlPipe:
     np.random.seed(42)
@@ -24,7 +28,7 @@ class MlPipe:
         if model not in self.models:
             raise ValueError(f"Not supported model type: {model} choose from: xgboost, logreg, sgd, rf")
         if 'n_estimators' in kwargs:
-            self.model = self.models[model](n_estimators=kwargs['n_estimators'])
+            self.model = self.models[model](n_estimators=kwargs['n_estimators']) #, eval_metric='logloss' need to add it and check if its work
         self.model_name = self.produce_model_name(model, kwargs)
 
     def produce_model_name(self, model, kwargs):
@@ -49,8 +53,61 @@ class MlPipe:
 
 
 class RbPipe:
-    def __init__(self, test_dat):
-        pass
+
+
+    def filter_train(self, data):
+        self._noun_chunk_rule(data)
+
+
+    def pred(self, data):
+        predictions_noun_chunks = self._noun_chunk_rule(data)
+        predictions_bla_bla = self._bla_bla_rule(data)
+        # initialise defaultdict of lists
+        all_pred = defaultdict(list)
+
+        # iterate dictionary items
+        dict_items = map(methodcaller('items'), (predictions_noun_chunks, predictions_bla_bla))
+        for k, v in chain.from_iterable(dict_items):
+            all_pred[k].extend(v)
+        return all_pred
+
+
+
+
+
+    def _noun_chunk_rule(self, data: ProcessAnnotatedData) -> Dict[str, list]:
+        pred_gen = defaultdict(list)
+        data: ProcessAnnotatedData
+        for sent in data.i2sentence:
+            if len(sent.entitis[PERSON]) == 0 or len(sent.entitis[ORG]) == 0:
+                continue
+            matched = []
+            for chunk in (list(sent.analyzed.noun_chunks)):
+                for (per, org) in product(sent.entities[PERSON], sent.entities[ORG]):
+                    # str(chunk)
+                    if org['text'] in chunk.text and \
+                       per['text'] in chunk.text and \
+                       per['text'] not in org['text'] and \
+                       org['text'] not in per['text']:
+                        matched.extend([("PER", per), ("ORG", org)])
+                        pred_gen[sent.idx].append((per, org))
+            sent.entities = self.remove_matched_entities(sent.entitis, matched)
+        return pred_gen
+
+
+    def remove_matched_entities(self, unfiltered_ents, matched):
+        if len(matched) == 0:
+            return unfiltered_ents
+        matched_per = [ent for (t, ent) in matched if t == PERSON]
+        matched_org = [ent for (t, ent) in matched if t == ORG]
+
+        filtered_ents = {}
+        filtered_ents[PERSON] = [e for e in unfiltered_ents[PERSON] if e['text'] not in matched_per]
+        filtered_ents[ORG] = [e for e in unfiltered_ents[ORG] if e['text'] not in matched_org]
+        return filtered_ents
+
+    def _bla_bla_rule(self, data)-> Dict[str, list]:
+        return {}
 
 
 class RePipeLine:
@@ -59,8 +116,10 @@ class RePipeLine:
     TEST_F = os.path.join(os.path.dirname(os.path.realpath(__file__)),  'cache', "test_data.pkl")
 
     def __init__(self, train_path, test_path, use_cache=False):
-        self.train, self.test = self.read_data(test_path, train_path, use_cache)
-        # self.rb_model = RbPipe()
+        train, test = self.read_data(test_path, train_path, use_cache)
+        self.rb_model = RbPipe()
+        self.train = self.rb_model.filter_train(train)
+        self.test, self.pred = self.rb_model.pred(self.test)
         self.relation_vectors = RelationsVectorizer(self.train, self.test)
         self.ml_model = MlPipe('xgboost', n_estimators=1000)
         self.run()
