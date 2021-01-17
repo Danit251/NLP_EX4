@@ -34,6 +34,9 @@ class RelationSentenceBuilder:
     def clean_sent(sent):
         return sent.replace("-LRB-", "(").replace("-RRB-", ")").replace("-LCB-", "").strip("()\n ")
 
+class ProcessCorpusData:
+    pass
+
 
 class ProcessAnnotatedData:
     def __init__(self, path):
