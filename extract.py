@@ -184,7 +184,7 @@ class RelationsVectorizer:
         while cur_head.dep_ != "ROOT" and (person_start_index > cur_head.i or cur_head.i > person_end_index):
             dist += 1
             cur_head = cur_head.head
-        #     all_deps[f"dep_{cur_head.dep_}"] += 1
+            # all_deps[f"dep_{cur_head.dep_}"] += 1
         #
         # if cur_head.dep_ != "ROOT":
         #     all_deps[f"dep_{cur_head.dep_}"] += 1
