@@ -12,7 +12,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
 from data_processor import ProcessAnnotatedData
 from relation_vectorizer import RelationsVectorizer
-from ent_extractor import EntitiesExtraction
 from itertools import chain
 from operator import methodcaller
 
@@ -165,8 +164,8 @@ class RelationExtractionPipeLine:
         rb_train_pred = self.rb_model.pred(train)
         rb_test_pred = self.rb_model.pred(test)
 
-        train_labels, train_op_relations = train.get_relations()
-        test_labels, test_op_relations = train.get_relations()
+        train_op_relations, train_labels = train.get_relations()
+        test_op_relations, test_labels = test.get_relations()
 
         train_vectorized = RelationsVectorizer(train.i2sentence, train_op_relations)
         test_vectorized = RelationsVectorizer(test.i2sentence, test_op_relations, dv=train_vectorized.dv)
@@ -196,11 +195,8 @@ class RelationExtractionPipeLine:
     def train_model(self, vectors, labels):
         ml_model = MlPipe('xgboost', n_estimators=1000)
         ml_model.train_model(vectors, labels)
-        self.save_to_pickle(ml_model)
+        self.save_to_pickle(ml_model, self.MODEL_PATH)
         return ml_model
-
-
-
 
     def run(self):
         pass

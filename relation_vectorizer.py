@@ -28,7 +28,6 @@ class RelationsVectorizer:
         # print()
 
     def normalize_features(self):
-        # "dist_sent", "dist_tree"
         sent_max = max([f["dist_sent"] for f in self.features])
         tree_max = max([f["dist_tree"] for f in self.features])
         for f in self.features:
@@ -171,9 +170,3 @@ class WeVectorizer:
 
     def vectorize_ent(self, org_candidate):
         return np.array([t.vector for t in self.vectorizer(org_candidate)]).mean(axis=0)
-
-
-
-
-
-
