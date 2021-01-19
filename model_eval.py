@@ -1,9 +1,11 @@
-from extract import load_from_pickle, predict, TRAIN_F, TEST_F, RelationsVectorizer, XGBClassifier, ProcessAnnotatedData, RelationSentence
+from extract import load_from_pickle, predict, RelationsVectorizer, XGBClassifier, ProcessAnnotatedData, RelationSentence
 from common import write_results
 from sklearn.metrics import classification_report, matthews_corrcoef
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFE
 import json
+TRAIN_F = "train_data.pkl"
+TEST_F = "test_data.pkl"
 
 
 train = load_from_pickle(TRAIN_F)

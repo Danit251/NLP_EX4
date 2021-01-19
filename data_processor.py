@@ -1,22 +1,19 @@
 from itertools import product
 
 import en_core_web_md
-import numpy as np
 from collections import defaultdict
 from tqdm import tqdm
 
 from ent_extractor import EntitiesExtraction
-from common import PERSON, ORG, RELATION, TEXT
+from common import RELATION, TEXT, PERSON, ORG
 
 
 class RelationSentence:
-    def __init__(self, idx, text, analyzed, entities, op_relation):
+    def __init__(self, idx, text, analyzed, entities):
         self.idx = idx
         self.text = text
         self.analyzed = analyzed
         self.entities = entities
-        self.op_relations = op_relation
-
 
 class RelationSentenceBuilder:
     def __init__(self):
@@ -27,8 +24,7 @@ class RelationSentenceBuilder:
         text = self.clean_sent(sent)
         analyzed = self.nlp(text)
         entities = self.ent_extractor.extract(text, analyzed)
-        op_relation = list(product(entities[PERSON], entities[ORG]))
-        return RelationSentence(idx, text, analyzed, entities, op_relation)
+        return RelationSentence(idx, text, analyzed, entities)
 
     @staticmethod
     def clean_sent(sent):
@@ -41,9 +37,6 @@ class ProcessCorpusData:
 class ProcessAnnotatedData:
     def __init__(self, path):
         self.i2sentence, self.i2relations = self.process_data(path)
-        self.pos_relations, self.neg_relations = self.get_relations()
-        self.op_relations = self.pos_relations + self.neg_relations
-        self.labels = np.array(["1"] * len(self.pos_relations) + ["0"] * len(self.neg_relations))
 
     def process_data(self, path):
         i2relations = defaultdict(list)
@@ -63,7 +56,7 @@ class ProcessAnnotatedData:
         neg_relations = []
         for sentence in self.i2sentence.values():
             for gold_person, gold_rel, gold_org in self.i2relations[sentence.idx]:
-                for person, org in sentence.op_relations:
+                for person, org in list(product(sentence.entities[PERSON], sentence.entities[ORG])):
                     relation = (sentence.idx, person, org, sentence.text)
                     if self.is_relation_pos(gold_rel, person, org, gold_person, gold_org):
                         pos_relations.append(relation)
@@ -73,6 +66,10 @@ class ProcessAnnotatedData:
         return pos_relations, neg_relations
 
     def is_relation_pos(self, rel, person, org, arg0, arg1):
-        if rel == RELATION and person[TEXT] == arg0 and org[TEXT] == arg1:
+        if rel == RELATION and self.is_the_same(person[TEXT], arg0) and self.is_the_same(org[TEXT], arg1):
             return True
         return False
+
+    @staticmethod
+    def is_the_same(s1, s2):
+        return s1 == s2 or s1 in s2 or s2 in s1

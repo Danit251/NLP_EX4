@@ -1,13 +1,5 @@
 import sys
-
-from data_processor import ProcessAnnotatedData, RelationSentence
-from relation_vectorizer import RelationsVectorizer
 from pipeline import RelationExtractionPipeLine
-TRAIN_F = "train_data.pkl"
-TEST_F = "test_data.pkl"
-
-model_name = "model_XGB_1000_feat_deps"
-
 
 
 def dev_main():
@@ -16,7 +8,6 @@ def dev_main():
     test_path = sys.argv[2]
     pipeline = RelationExtractionPipeLine()
     pipeline.run_train_pipeline(train_path, test_path, use_cache)
-
 
 
 def main():

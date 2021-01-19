@@ -58,16 +58,17 @@ class RuleBasedpipe:
 
     def filter_data_set(self, data):
         self._noun_chunk_rule(data)
+        self._apposition_rule(data)
         return data
 
-    def pred(self, data):
+    def pred(self, data): #TODO debug it to see it's ok
         predictions_noun_chunks = self._noun_chunk_rule(data)
-        predictions_bla_bla = self._apposition_rule(data)
+        predictions_apposition_rule = self._apposition_rule(data)
         # initialise defaultdict of lists
         all_pred = defaultdict(list)
 
         # iterate dictionary items
-        dict_items = map(methodcaller('items'), (predictions_noun_chunks, predictions_bla_bla))
+        dict_items = map(methodcaller('items'), (predictions_noun_chunks, predictions_apposition_rule))
         for k, v in chain.from_iterable(dict_items):
             all_pred[k].extend(v)
         return all_pred
@@ -88,33 +89,30 @@ class RuleBasedpipe:
                        org['text'] not in per['text']:
                         matched.extend([("PER", per['text']), ("ORG", org['text'])])
                         pred_gen[sent.idx].append((per['text'], org['text'], sent.text))
-            sent.entities = self.remove_matched_entities(sent.entities, matched)
+            self.remove_matched_entities(sent.entities, matched)
         return pred_gen
 
     @staticmethod
     def remove_matched_entities(unfiltered_ents, matched):
-        pass # TODO take down per and org only if there only 1 from each
         if len(matched) == 0:
             return unfiltered_ents
         matched_per = [ent for (t, ent) in matched if t == PERSON]
-        matched_org = [ent for (t, ent) in matched if t == ORG]
-
-        filtered_ents = {}
-        filtered_ents[PERSON] = [e for e in unfiltered_ents[PERSON] if e['text'] not in matched_per]
-        filtered_ents[ORG] = [e for e in unfiltered_ents[ORG] if e['text'] not in matched_org]
-        return filtered_ents
+        # We filter only the person and not the org because we assume a person would woek only in one place
+        filtered_per = [e for e in unfiltered_ents[PERSON] if e['text'] not in matched_per]
+        unfiltered_ents[PERSON] = filtered_per
 
     def _apposition_rule(self, data) -> Dict[str, list]:
         all_preds = defaultdict(list)
         for sent in data.i2sentence.values():
+            matched = []
             for (cand_per, cand_org) in product(sent.entities['PER'], sent.entities['ORG']):
                 org_head_token = self.get_entity_head(sent.analyzed, cand_org)
                 if not org_head_token:
-                    print(f"can't find org head: {cand_org}")
                     continue
-
                 if self.is_work_for(org_head_token, cand_per):
                     all_preds[sent.idx].append((cand_per["text"], cand_org["text"], sent.text))
+                    matched.extend([("PER", cand_per['text']), ("ORG", cand_org['text'])])
+            self.remove_matched_entities(sent.entities, matched)
         return all_preds
 
     @staticmethod
@@ -141,6 +139,9 @@ class RuleBasedpipe:
             return True
         return False
 
+    def remove__op_relation(self, entities, matched):
+        pass
+
 
 class RelationExtractionPipeLine:
 
@@ -166,7 +167,16 @@ class RelationExtractionPipeLine:
         train, test = self.read_train_data(test_path, train_path, use_cache)
         rb_train_pred = self.rb_model.pred(train)
         rb_test_pred = self.rb_model.pred(test)
-        relation_vectors = RelationsVectorizer(train, test)
+
+
+        # filtered_train = self.filter_optional_relation(train, rb_train_pred)
+        # filtered_test = self.filter_optional_relation(test, rb_test_pred)
+
+        pos_relations, neg_relations = train.get_relations()
+        op_relations = pos_relations + neg_relations
+        labels = np.array(["1"] * len(pos_relations) + ["0"] * len(neg_relations))
+
+        relation_vectors = RelationsVectorizer(filtered_train, test)
         model = self.train_model(relation_vectors)
         ml_train_pred = model.predict(relation_vectors.train_vectors)
         self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train.op_relations, ml_train_pred, rb_train_pred)
@@ -192,12 +202,7 @@ class RelationExtractionPipeLine:
 
     def train_model(self, relation_vectors):
         ml_model = MlPipe('xgboost', n_estimators=1000)
-        # ml_model = MlPipe('svc', max_iter=10000)
         ml_model.train_model(relation_vectors.train_vectors, relation_vectors.train_labels)
-        # if write_res:
-        #     predicted_labels_test = ml_model.predict(relation_vectors.test_vectors)
-        #     predicted_labels_train = ml_model.predict(relation_vectors.train_vectors)
-        #     write_results(f"PRED.annotations_{ml_model.model_name}.txt", test.op_relations, predicted_labels)
         self.save_to_pickle(ml_model)
         return ml_model
 
@@ -230,5 +235,9 @@ class RelationExtractionPipeLine:
         with open(f_name, 'rb') as f:
             data = pickle.load(f)
         return data
+
+
+
+
 
 
