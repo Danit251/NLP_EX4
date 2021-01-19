@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
 from data_processor import ProcessAnnotatedData
 from relation_vectorizer import RelationsVectorizer
-
+from ent_extractor import EntitiesExtraction
 from itertools import chain
 from operator import methodcaller
 
@@ -219,8 +219,8 @@ class RelationExtractionPipeLine:
         self.save_to_pickle(test, self.TEST_F)
         return train, test
 
-    def save_to_pickle(self, data):
-        with open(self.MODEL_PATH, 'wb') as output:
+    def save_to_pickle(self, data, path):
+        with open(path, 'wb') as output:
             pickle.dump(data, output, pickle.HIGHEST_PROTOCOL)
 
     @staticmethod
