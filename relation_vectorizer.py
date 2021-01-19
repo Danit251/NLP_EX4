@@ -2,35 +2,38 @@ from collections import defaultdict
 
 import en_core_web_md
 from sklearn.feature_extraction import DictVectorizer
-
 from common import SPAN
 import numpy as np
 
 
 class RelationsVectorizer:
 
-    def __init__(self, train_data, test_data):
-        # self.embedding_vectorizer = WeVectorizer(train_data, test_data)
-        self.dv = DictVectorizer()
+    def __init__(self, i2sentence, op_relations, dv=None):
+        # self.embedding_vectorizer = WeVectorizer(data)
 
-        self.train_features = self.get_features(train_data.i2sentence, train_data.op_relations)
-        self.stat = self.create_features_stat()
-        self.norm_features(self.train_features)
-        # self.norm_stat = self.create_features_stat()
-        self.test_features = self.get_features(test_data.i2sentence, test_data.op_relations)
+        self.features = self.get_features(i2sentence, op_relations)
+        self.remove_redundant_features()
+        self.normalize_features()
 
-        # self.e_train_vectors = self.embedding_vectorizer.train_vec
-        # self.f_train_vectors = self.dv.fit_transform(self.train_features).toarray()
-        # self.train_vectors = self.merge_vectors(self.f_train_vectors, self.e_train_vectors)
-        self.train_vectors = self.dv.fit_transform(self.train_features).toarray()
-        self.train_labels = train_data.labels
+        if not dv:
+            self.dv = DictVectorizer()
+            self.vectors = self.dv.fit_transform(self.features).toarray()
+        else:
+            self.dv = dv
+            self.vectors = self.dv.transform(self.features).toarray()
 
-        # self.e_test_vectors = self.embedding_vectorizer.test_vec
-        # self.f_test_vectors = self.dv.transform(self.test_features).toarray()
-        # self.test_vectors = self.merge_vectors(self.f_test_vectors, self.e_test_vectors)
-        self.test_vectors = self.dv.transform(self.test_features).toarray()
-        self.test_labels = test_data.labels
-        print(self.dv.feature_names_)
+        # self.e_vectors = self.embedding_vectorizer.vectors
+        # self.f_vectors = self.dv.fit_transform(self.features).toarray()
+        # self.vectors = self.merge_vectors(self.f_vectors, self.e_vectors)
+        # print()
+
+    def normalize_features(self):
+        # "dist_sent", "dist_tree"
+        sent_max = max([f["dist_sent"] for f in self.features])
+        tree_max = max([f["dist_tree"] for f in self.features])
+        for f in self.features:
+            f["dist_sent"] /= sent_max
+            f["dist_tree"] /= tree_max
 
     def merge_vectors(self, feat_vectors, embedding_vectors):
         merged = []
@@ -38,19 +41,20 @@ class RelationsVectorizer:
             merged.append(np.concatenate([f_vec, e_vec]))
         return np.array(merged)
 
-    def norm_features(self, features):
-        for f_dict in features:
+    def remove_redundant_features(self):
+        stat = self.create_features_stat()
+        for f_dict in self.features:
             for f_name, f_val in f_dict.items():
-                f_stat = self.stat[f_name][f_val]
-                if (f_name == "dist_sent" and (f_val < 4 or f_val > 13)) or \
-                        (f_name == "dist_tree" and (f_val < 3 or f_val > 6)):
+                f_stat = stat[f_name][f_val]
+                if (f_name == "dist_sent" and (f_val < 4 or f_val > 20)) or \
+                        (f_name == "dist_tree" and (f_val < 3 or f_val > 10)):
                     f_dict[f_name] = 0
-                if f_name not in ["dist_sent", "dist_tree"] and f_stat < 20:
+                if f_name not in ["dist_sent", "dist_tree"] and f_stat < 15:
                     f_dict[f_name] = "OTHER"
 
     def create_features_stat(self):
         stat = defaultdict(lambda: defaultdict(int))
-        for f in self.train_features:
+        for f in self.features:
             for f_name, f_val in f.items():
                 stat[f_name][f_val] += 1
 
@@ -141,13 +145,10 @@ class RelationsVectorizer:
 
 class WeVectorizer:
 
-    def __init__(self,  train_data, test_data):
-        self.vectorizer = en_core_web_md.load()
-        self.train_vec = self.vectorizer_data(train_data.op_relations)
-        self.train_labels = train_data.labels
-
-        self.test_vec = self.vectorizer_data(test_data.op_relations)
-        self.test_labels = test_data.labels
+    def __init__(self,  data, vectorizer=None):
+        if not vectorizer:
+            self.vectorizer = en_core_web_md.load()
+        self.vectors = self.vectorizer_data(data.op_relations)
 
     def vectorizer_data(self, relations):
         vecs = []

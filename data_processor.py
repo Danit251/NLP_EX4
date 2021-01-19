@@ -52,18 +52,17 @@ class ProcessAnnotatedData:
         return sentences, i2relations
 
     def get_relations(self):
-        pos_relations = []
-        neg_relations = []
+        relations = []
+        labels = []
         for sentence in self.i2sentence.values():
             for gold_person, gold_rel, gold_org in self.i2relations[sentence.idx]:
                 for person, org in list(product(sentence.entities[PERSON], sentence.entities[ORG])):
-                    relation = (sentence.idx, person, org, sentence.text)
+                    relations.append((sentence.idx, person, org, sentence.text))
                     if self.is_relation_pos(gold_rel, person, org, gold_person, gold_org):
-                        pos_relations.append(relation)
+                        labels.append('1')
                     else:
-                        neg_relations.append(relation)
-
-        return pos_relations, neg_relations
+                        labels.append('0')
+        return relations, labels
 
     def is_relation_pos(self, rel, person, org, arg0, arg1):
         if rel == RELATION and self.is_the_same(person[TEXT], arg0) and self.is_the_same(org[TEXT], arg1):

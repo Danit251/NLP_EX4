@@ -3,7 +3,7 @@ from pipeline import RelationExtractionPipeLine
 
 
 def dev_main():
-    use_cache = True
+    use_cache = False
     train_path = sys.argv[1]
     test_path = sys.argv[2]
     pipeline = RelationExtractionPipeLine()

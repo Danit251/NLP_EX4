@@ -2,7 +2,7 @@ import pickle
 import os
 from collections import defaultdict
 from itertools import product
-from typing import Tuple, List, Dict
+from typing import Tuple, Dict
 from common import PERSON, ORG, TEXT, RELATION
 import numpy as np
 from xgboost import XGBClassifier
@@ -15,6 +15,7 @@ from relation_vectorizer import RelationsVectorizer
 
 from itertools import chain
 from operator import methodcaller
+
 
 class MlPipe:
     np.random.seed(42)
@@ -39,16 +40,12 @@ class MlPipe:
             kwargs_str += f'{k}_{v}'
         return kwargs_str
 
-
-
-
     def train_model(self,  vectors, labels):
         # model = RandomForestClassifier(n_estimators=1000)
         # model = LogisticRegression(max_iter=1000)
         # model = SGDClassifier(max_iter=1000)
         # model = XGBClassifier(n_estimators=1000)
         self.model.fit(vectors, labels)
-
 
     def predict(self, test_vectors):
         return self.model.predict(test_vectors)
@@ -168,20 +165,16 @@ class RelationExtractionPipeLine:
         rb_train_pred = self.rb_model.pred(train)
         rb_test_pred = self.rb_model.pred(test)
 
+        train_labels, train_op_relations = train.get_relations()
+        test_labels, test_op_relations = train.get_relations()
 
-        # filtered_train = self.filter_optional_relation(train, rb_train_pred)
-        # filtered_test = self.filter_optional_relation(test, rb_test_pred)
-
-        pos_relations, neg_relations = train.get_relations()
-        op_relations = pos_relations + neg_relations
-        labels = np.array(["1"] * len(pos_relations) + ["0"] * len(neg_relations))
-
-        relation_vectors = RelationsVectorizer(filtered_train, test)
-        model = self.train_model(relation_vectors)
-        ml_train_pred = model.predict(relation_vectors.train_vectors)
-        self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train.op_relations, ml_train_pred, rb_train_pred)
-        ml_test_pred = model.predict(relation_vectors.test_vectors)
-        self.write_annotated_file(f"PRED.DEV.annotations_{model.model_name}.txt", test.op_relations, ml_test_pred, rb_test_pred)
+        train_vectorized = RelationsVectorizer(train.i2sentence, train_op_relations)
+        test_vectorized = RelationsVectorizer(test.i2sentence, test_op_relations, dv=train_vectorized.dv)
+        model = self.train_model(train_vectorized.vectors, train_labels)
+        ml_train_pred = model.predict(train_vectorized.vectors)
+        self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train_op_relations, ml_train_pred, rb_train_pred)
+        ml_test_pred = model.predict(test_vectorized.vectors)
+        self.write_annotated_file(f"PRED.DEV.annotations_{model.model_name}.txt", test_op_relations, ml_test_pred, rb_test_pred)
 
     @staticmethod
     def write_annotated_file(f_name, op_relations, predicted_labels, rule_based_relations):
@@ -200,9 +193,9 @@ class RelationExtractionPipeLine:
                     f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
                     rel_set.add(rel_str)
 
-    def train_model(self, relation_vectors):
+    def train_model(self, vectors, labels):
         ml_model = MlPipe('xgboost', n_estimators=1000)
-        ml_model.train_model(relation_vectors.train_vectors, relation_vectors.train_labels)
+        ml_model.train_model(vectors, labels)
         self.save_to_pickle(ml_model)
         return ml_model
 
