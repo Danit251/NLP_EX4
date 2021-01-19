@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from itertools import product
 from typing import Tuple, Dict
-from common import PERSON, ORG, TEXT, RELATION
+from common import PERSON, ORG, TEXT, RELATION, Relation, is_the_same
 import numpy as np
 from xgboost import XGBClassifier
 from sklearn.linear_model import LogisticRegression
@@ -30,7 +30,7 @@ class MlPipe:
         if 'max_iter' in kwargs:
             self.model = self.models[model](max_iter=kwargs['max_iter'])
         elif 'n_estimators' in kwargs:
-            self.model = self.models[model](n_estimators=kwargs['n_estimators']) #, eval_metric='logloss' need to add it and check if its work
+            self.model = self.models[model](n_estimators=kwargs['n_estimators'], scale_pos_weight=70) #, eval_metric='logloss' need to add it and check if its work
         self.model_name = self.produce_model_name(model, kwargs)
 
     def produce_model_name(self, model, kwargs):
@@ -40,14 +40,16 @@ class MlPipe:
         return kwargs_str
 
     def train_model(self,  vectors, labels):
-        # model = RandomForestClassifier(n_estimators=1000)
-        # model = LogisticRegression(max_iter=1000)
-        # model = SGDClassifier(max_iter=1000)
-        # model = XGBClassifier(n_estimators=1000)
         self.model.fit(vectors, labels)
 
-    def predict(self, test_vectors):
-        return self.model.predict(test_vectors)
+    def predict(self, test_vectors, op_relations):
+        pred = self.model.predict(test_vectors)
+        res = defaultdict(list)
+        for i, (idx, person, org, sentence) in enumerate(op_relations):
+            if pred[i] == "1":
+                res[idx].append(Relation(person[TEXT], org[TEXT], sentence))
+        return res
+
 
 
 class RuleBasedpipe:
@@ -84,7 +86,7 @@ class RuleBasedpipe:
                        per['text'] not in org['text'] and \
                        org['text'] not in per['text']:
                         matched.extend([("PER", per['text']), ("ORG", org['text'])])
-                        pred_gen[sent.idx].append((per['text'], org['text'], sent.text))
+                        pred_gen[sent.idx].append(Relation(per['text'], org['text'], sent.text))
             self.remove_matched_entities(sent.entities, matched)
         return pred_gen
 
@@ -106,7 +108,7 @@ class RuleBasedpipe:
                 if not org_head_token:
                     continue
                 if self.is_work_for(org_head_token, cand_per):
-                    all_preds[sent.idx].append((cand_per["text"], cand_org["text"], sent.text))
+                    all_preds[sent.idx].append(Relation(cand_per["text"], cand_org["text"], sent.text))
                     matched.extend([("PER", cand_per['text']), ("ORG", cand_org['text'])])
             self.remove_matched_entities(sent.entities, matched)
         return all_preds
@@ -169,28 +171,71 @@ class RelationExtractionPipeLine:
 
         train_vectorized = RelationsVectorizer(train.i2sentence, train_op_relations)
         test_vectorized = RelationsVectorizer(test.i2sentence, test_op_relations, dv=train_vectorized.dv)
+
+        ##########################
+        if False:
+            from eval import main
+            for n_estimators_val in [100, 150,200 ]:
+                for scale_pos_weight_val in [30,50,60,70,80,90]:
+                    for min_child_weight_val in [1,2,3, 6,8,10,12]:
+                        xgboost = XGBClassifier(n_estimators=n_estimators_val,
+                                                scale_pos_weight=scale_pos_weight_val,
+                                                min_child_weight=min_child_weight_val)
+                        xgboost.fit(train_vectorized.vectors, train_labels)
+                        pred = xgboost.predict(test_vectorized.vectors)
+                        res = defaultdict(list)
+                        for i, (idx, person, org, sentence) in enumerate(test_op_relations):
+                            if pred[i] == "1":
+                                res[idx].append(Relation(person[TEXT], org[TEXT], sentence))
+                        agg = self.agregate_result(rb_test_pred, res)
+                        pred_f_name = f"PRED.TRAIN.annotations_est_{n_estimators_val}_pos_{scale_pos_weight_val}_min_child_weight_{min_child_weight_val}.txt"
+                        self.write_annotated_file(pred_f_name, agg)
+                        print(f"Reslult for est: {n_estimators_val} pos: {scale_pos_weight_val} child_weight: {min_child_weight_val}")
+                        main('data/DEV.annotations.tsv', pred_f_name)
+        ###########################
+
+
         model = self.train_model(train_vectorized.vectors, train_labels)
-        ml_train_pred = model.predict(train_vectorized.vectors)
-        self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train_op_relations, ml_train_pred, rb_train_pred)
-        ml_test_pred = model.predict(test_vectorized.vectors)
-        self.write_annotated_file(f"PRED.DEV.annotations_{model.model_name}.txt", test_op_relations, ml_test_pred, rb_test_pred)
+        ml_train_pred = model.predict(train_vectorized.vectors, train_op_relations)
+        train_res = self.agregate_result(rb_train_pred, ml_train_pred) #TODO just for debugging - after out back rb_train_pred
+
+        self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train_res)
+
+
+        ml_test_pred = model.predict(test_vectorized.vectors, test_op_relations)
+        test_res = self.agregate_result(rb_test_pred, ml_test_pred) #TODO just for debugging - after out back rb_test_pred
+        self.write_annotated_file(f"PRED.DEV.annotations_{model.model_name}.txt", test_res)
+
+
+    def agregate_result(self, rb_train_pred, ml_train_pred):
+        final_res = defaultdict(list)
+
+        for sent_id, rel_list in rb_train_pred.items():
+            for rel in rel_list:
+                if not self.is_in_final_res(final_res, rel, sent_id):
+                    final_res[sent_id].append(rel)
+
+        for sent_id, rel_list in ml_train_pred.items():
+            for rel in rel_list:
+                if not self.is_in_final_res(final_res, rel, sent_id):
+                    final_res[sent_id].append(rel)
+        return final_res
+
+
+    def is_in_final_res(self, final_res, rel: Relation, sent_id):
+        for res_rel in final_res[sent_id]:
+            new_person = rel.person
+            new_org = rel.org
+            if is_the_same(res_rel.person, new_person) and is_the_same(res_rel.org, new_org):
+                return True
+        return False
 
     @staticmethod
-    def write_annotated_file(f_name, op_relations, predicted_labels, rule_based_relations):
-        rel_set = set()
+    def write_annotated_file(f_name, train_res):
         with open(f_name, "w") as f_res:
-            for idx, sent_relations in rule_based_relations.items():
+            for idx, sent_relations in train_res.items():
                 for (person, org, sentence) in sent_relations:
-                    rel_str = "_".join([idx, person, RELATION, org])
-                    if rel_str not in rel_set:
-                        f_res.write("\t".join([idx, person, RELATION, org, f"( {sentence} )\n"]))
-                        rel_set.add(rel_str)
-
-            for i, (idx, person, org, sentence) in enumerate(op_relations):
-                rel_str = "_".join([idx, person[TEXT], RELATION, org[TEXT]])
-                if predicted_labels[i] == "1" and rel_str not in rel_set:
-                    f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
-                    rel_set.add(rel_str)
+                    f_res.write("\t".join([idx, person, RELATION, org, f"( {sentence} )\n"]))
 
     def train_model(self, vectors, labels):
         ml_model = MlPipe('xgboost', n_estimators=1000)
@@ -224,6 +269,8 @@ class RelationExtractionPipeLine:
         with open(f_name, 'rb') as f:
             data = pickle.load(f)
         return data
+
+
 
 
 

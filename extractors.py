@@ -36,7 +36,8 @@ class FlairExtractor(Extractor):
     def extract(self, sentence: str) -> Dict[str, Dict[str, Union[str, Tuple]]]:
         doc = Sentence(sentence)
         self.nlp.predict(doc)
-        d = sorted([(e.tag, {"text": e.text, "span": (e.tokens[0].start_pos, len(e.tokens))}) for e in doc.get_spans('ner') if e.tag in self.valid_entity_types],
+        d = sorted([(e.tag, {"text": e.text, "span": (e.tokens[0].start_pos, len(e.tokens))})
+                    for e in doc.get_spans('ner') if e.tag in self.valid_entity_types],
                      key=lambda t: t[0])
         d = {k: list(map(lambda t: t[1], g)) for k, g in groupby(d,  key=lambda t: t[0])}
         return d

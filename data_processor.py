@@ -5,7 +5,7 @@ from collections import defaultdict
 from tqdm import tqdm
 
 from ent_extractor import EntitiesExtraction
-from common import RELATION, TEXT, PERSON, ORG
+from common import RELATION, TEXT, PERSON, ORG, is_the_same
 
 
 class RelationSentence:
@@ -67,10 +67,12 @@ class ProcessAnnotatedData:
         return relations, labels
 
     def is_relation_pos(self, rel, person, org, arg0, arg1):
-        if rel == RELATION and self.is_the_same(person[TEXT], arg0) and self.is_the_same(org[TEXT], arg1):
+        if rel == RELATION and is_the_same(person[TEXT], arg0) and is_the_same(org[TEXT], arg1):
             return True
         return False
 
-    @staticmethod
-    def is_the_same(s1, s2):
-        return s1 == s2 or s1 in s2 or s2 in s1
+
+
+
+if __name__ == '__main__':
+    RelationSentenceBuilder().build_relation_sent("b", "( The Environmental Protection Agency is working on a brochure advising diabetics of the best way to dispose of needles , said Robin Woods , a spokeswoman for the agency in Washington , D.C. It will suggest that diabetics place ` ` sharps ' ' _ the needle end of a syringe _ in a hard plastic or metal container like a coffee can before throwing it in the trash , Woods said. )")
