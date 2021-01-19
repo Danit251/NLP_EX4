@@ -16,6 +16,7 @@ from relation_vectorizer import RelationsVectorizer
 from itertools import chain
 from operator import methodcaller
 
+
 class MlPipe:
     np.random.seed(42)
     models = {'xgboost': XGBClassifier,
@@ -39,16 +40,12 @@ class MlPipe:
             kwargs_str += f'{k}_{v}'
         return kwargs_str
 
-
-
-
     def train_model(self,  vectors, labels):
         # model = RandomForestClassifier(n_estimators=1000)
         # model = LogisticRegression(max_iter=1000)
         # model = SGDClassifier(max_iter=1000)
         # model = XGBClassifier(n_estimators=1000)
         self.model.fit(vectors, labels)
-
 
     def predict(self, test_vectors):
         return self.model.predict(test_vectors)
@@ -166,11 +163,12 @@ class RelationExtractionPipeLine:
         train, test = self.read_train_data(test_path, train_path, use_cache)
         rb_train_pred = self.rb_model.pred(train)
         rb_test_pred = self.rb_model.pred(test)
-        relation_vectors = RelationsVectorizer(train, test)
-        model = self.train_model(relation_vectors)
-        ml_train_pred = model.predict(relation_vectors.train_vectors)
+        train_vectorized = RelationsVectorizer(train)
+        test_vectorized = RelationsVectorizer(test, dv=train_vectorized.dv)
+        model = self.train_model(train_vectorized.vectors, train_vectorized.labels)
+        ml_train_pred = model.predict(train_vectorized.vectors)
         self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train.op_relations, ml_train_pred, rb_train_pred)
-        ml_test_pred = model.predict(relation_vectors.test_vectors)
+        ml_test_pred = model.predict(test_vectorized.vectors)
         self.write_annotated_file(f"PRED.DEV.annotations_{model.model_name}.txt", test.op_relations, ml_test_pred, rb_test_pred)
 
     @staticmethod
@@ -190,10 +188,10 @@ class RelationExtractionPipeLine:
                     f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
                     rel_set.add(rel_str)
 
-    def train_model(self, relation_vectors):
+    def train_model(self, vectors, labels):
         ml_model = MlPipe('xgboost', n_estimators=1000)
         # ml_model = MlPipe('svc', max_iter=10000)
-        ml_model.train_model(relation_vectors.train_vectors, relation_vectors.train_labels)
+        ml_model.train_model(vectors, labels)
         # if write_res:
         #     predicted_labels_test = ml_model.predict(relation_vectors.test_vectors)
         #     predicted_labels_train = ml_model.predict(relation_vectors.train_vectors)

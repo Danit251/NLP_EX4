@@ -16,9 +16,6 @@ def process_data(path):
     return i2relations
 
 
-
-
-
 if __name__ == '__main__':
     gold_relation = process_data(sys.argv[1])
     pred_relation = process_data(sys.argv[2])
