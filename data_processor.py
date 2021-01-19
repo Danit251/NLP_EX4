@@ -36,6 +36,7 @@ class ProcessCorpusData:
 
 class ProcessAnnotatedData:
     def __init__(self, path):
+        self.relation_builder = RelationSentenceBuilder()
         self.i2sentence, self.i2relations = self.process_data(path)
 
     def process_data(self, path):
@@ -46,7 +47,7 @@ class ProcessAnnotatedData:
             for line in tqdm(lines):
                 idx, arg0, relation, arg1, sentence = line.split("\t")
                 if idx not in i2relations:
-                    sentences[idx] = RelationSentence(idx, sentence)
+                    sentences[idx] = self.relation_builder.build_relation_sent(idx, sentence)
                 i2relations[idx].append((arg0, relation, arg1))
 
         return sentences, i2relations
