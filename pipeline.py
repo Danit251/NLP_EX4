@@ -9,7 +9,7 @@ from xgboost import XGBClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
-
+from sklearn.svm import LinearSVC
 from data_processor import ProcessAnnotatedData
 from relation_vectorizer import RelationsVectorizer
 
@@ -21,12 +21,15 @@ class MlPipe:
     models = {'xgboost': XGBClassifier,
               'logreg': LogisticRegression,
               'sgd': SGDClassifier,
-              'rf': RandomForestClassifier}
+              'rf': RandomForestClassifier,
+              'svc': LinearSVC}
 
     def __init__(self, model, **kwargs):
         if model not in self.models:
             raise ValueError(f"Not supported model type: {model} choose from: xgboost, logreg, sgd, rf")
-        if 'n_estimators' in kwargs:
+        if 'max_iter' in kwargs:
+            self.model = self.models[model](max_iter=kwargs['max_iter'])
+        elif 'n_estimators' in kwargs:
             self.model = self.models[model](n_estimators=kwargs['n_estimators']) #, eval_metric='logloss' need to add it and check if its work
         self.model_name = self.produce_model_name(model, kwargs)
 
@@ -59,7 +62,7 @@ class RuleBasedpipe:
 
     def pred(self, data):
         predictions_noun_chunks = self._noun_chunk_rule(data)
-        predictions_bla_bla = self._bla_bla_rule(data)
+        predictions_bla_bla = self._apposition_rule(data)
         # initialise defaultdict of lists
         all_pred = defaultdict(list)
 
@@ -101,8 +104,42 @@ class RuleBasedpipe:
         filtered_ents[ORG] = [e for e in unfiltered_ents[ORG] if e['text'] not in matched_org]
         return filtered_ents
 
-    def _bla_bla_rule(self, data) -> Dict[str, list]:
-        return {}
+    def _apposition_rule(self, data) -> Dict[str, list]:
+        all_preds = defaultdict(list)
+        for sent in data.i2sentence.values():
+            for (cand_per, cand_org) in product(sent.entities['PER'], sent.entities['ORG']):
+                org_head_token = self.get_entity_head(sent.analyzed, cand_org)
+                if not org_head_token:
+                    print(f"can't find org head: {cand_org}")
+                    continue
+
+                if self.is_work_for(org_head_token, cand_per):
+                    all_preds[sent.idx].append((cand_per["text"], cand_org["text"], sent.text))
+        return all_preds
+
+    @staticmethod
+    def is_person_token(token, person):
+        if person["span"][1] <= token.i <= person["span"][1]:
+            return True
+        return False
+
+    @staticmethod
+    def get_entity_head(doc, entity):
+        for j in range(entity["span"][0], entity["span"][1] + 1):
+            if doc[j].head.i > entity["span"][1] or doc[j].head.i < entity["span"][0]:
+                return doc[j]
+        return None
+
+    def is_work_for(self, org_head_token, person):
+        if org_head_token.dep_ == "pobj" and org_head_token.head.dep_ == "prep":
+            if self.is_person_token(org_head_token.head.head, person):
+                return True
+            elif org_head_token.head.head.dep_ == "appos" and self.is_person_token(org_head_token.head.head.head, person):
+                return True
+        elif org_head_token.dep_ in ["nmod", "compound"] and org_head_token.head.dep_ == "appos" and self.is_person_token(
+                org_head_token.head.head, person):
+            return True
+        return False
 
 
 class RelationExtractionPipeLine:
@@ -153,9 +190,9 @@ class RelationExtractionPipeLine:
                     f_res.write("\t".join([idx, person[TEXT], RELATION, org[TEXT], f"( {sentence} )\n"]))
                     rel_set.add(rel_str)
 
-
     def train_model(self, relation_vectors):
         ml_model = MlPipe('xgboost', n_estimators=1000)
+        # ml_model = MlPipe('svc', max_iter=10000)
         ml_model.train_model(relation_vectors.train_vectors, relation_vectors.train_labels)
         # if write_res:
         #     predicted_labels_test = ml_model.predict(relation_vectors.test_vectors)
