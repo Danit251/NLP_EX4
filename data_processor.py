@@ -23,7 +23,7 @@ class RelationSentenceBuilder:
     def build_relation_sent(self, idx, sent):
         text = self.clean_sent(sent)
         analyzed = self.nlp(text)
-        entities = self.ent_extractor.extract(text, analyzed)
+        entities = self.ent_extractor.extract(analyzed)
         return RelationSentence(idx, text, analyzed, entities)
 
     @staticmethod
