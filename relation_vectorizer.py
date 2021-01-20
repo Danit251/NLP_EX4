@@ -165,11 +165,11 @@ class WeVectorizer:
 
     def vectorizer_data(self, relations):
         vecs = []
-        for sent_id, per_cand, org_cand, sent_raw in tqdm(relations[:10]):
+        for sent_id, per_cand, org_cand, sent_raw in tqdm(relations):
             sent = sent_raw.strip("().\n")
             sent = Sentence(sent)
             self.vectorizer.embed(sent)
-            vecs.append(sent[0].embedding)
+            vecs.append(sent[0].embedding.cpu().detach().numpy())
         vecs = np.array(vecs)
         return vecs
 
