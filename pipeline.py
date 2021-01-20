@@ -175,9 +175,9 @@ class RelationExtractionPipeLine:
         ##########################
         if False:
             from eval import main
-            for n_estimators_val in [100, 150,200 ]:
-                for scale_pos_weight_val in [30,50,60,70,80,90]:
-                    for min_child_weight_val in [1,2,3, 6,8,10,12]:
+            for n_estimators_val in [100, 150, 200, 300, 600, 1000]:
+                for scale_pos_weight_val in [30, 50, 60, 70, 80, 90]:
+                    for min_child_weight_val in [1, 2, 3]:
                         xgboost = XGBClassifier(n_estimators=n_estimators_val,
                                                 scale_pos_weight=scale_pos_weight_val,
                                                 min_child_weight=min_child_weight_val)
@@ -191,7 +191,7 @@ class RelationExtractionPipeLine:
                         pred_f_name = f"PRED.TRAIN.annotations_est_{n_estimators_val}_pos_{scale_pos_weight_val}_min_child_weight_{min_child_weight_val}.txt"
                         self.write_annotated_file(pred_f_name, agg)
                         print(f"Reslult for est: {n_estimators_val} pos: {scale_pos_weight_val} child_weight: {min_child_weight_val}")
-                        main('data/DEV.annotations.tsv', pred_f_name)
+                        main('DEV.annotations.txt', pred_f_name)
         ###########################
 
 
@@ -238,7 +238,7 @@ class RelationExtractionPipeLine:
                     f_res.write("\t".join([idx, person, RELATION, org, f"( {sentence} )\n"]))
 
     def train_model(self, vectors, labels):
-        ml_model = MlPipe('xgboost', n_estimators=1000)
+        ml_model = MlPipe('xgboost', n_estimators=100)
         ml_model.train_model(vectors, labels)
         self.save_to_pickle(ml_model, self.MODEL_PATH)
         return ml_model

@@ -9,7 +9,7 @@ import numpy as np
 class RelationsVectorizer:
 
     def __init__(self, i2sentence, op_relations, dv=None):
-        # self.embedding_vectorizer = WeVectorizer(data)
+        self.embedding_vectorizer = WeVectorizer(op_relations)
 
         self.features = self.get_features(i2sentence, op_relations)
         self.remove_redundant_features()
@@ -17,14 +17,13 @@ class RelationsVectorizer:
 
         if not dv:
             self.dv = DictVectorizer()
-            self.vectors = self.dv.fit_transform(self.features).toarray()
+            self.f_vectors = self.dv.fit_transform(self.features).toarray()
         else:
             self.dv = dv
-            self.vectors = self.dv.transform(self.features).toarray()
+            self.f_vectors = self.dv.transform(self.features).toarray()
 
-        # self.e_vectors = self.embedding_vectorizer.vectors
-        # self.f_vectors = self.dv.fit_transform(self.features).toarray()
-        # self.vectors = self.merge_vectors(self.f_vectors, self.e_vectors)
+        self.e_vectors = self.embedding_vectorizer.vectors
+        self.vectors = self.merge_vectors(self.f_vectors, self.e_vectors)
         # print()
 
     def normalize_features(self):
@@ -144,10 +143,10 @@ class RelationsVectorizer:
 
 class WeVectorizer:
 
-    def __init__(self,  data, vectorizer=None):
+    def __init__(self,  op_relations, vectorizer=None):
         if not vectorizer:
             self.vectorizer = en_core_web_md.load()
-        self.vectors = self.vectorizer_data(data.op_relations)
+        self.vectors = self.vectorizer_data(op_relations)
 
     def vectorizer_data(self, relations):
         vecs = []
