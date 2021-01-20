@@ -1,10 +1,12 @@
 from collections import defaultdict
 
 import en_core_web_md
+from flair.data import Sentence
 from sklearn.feature_extraction import DictVectorizer
 from common import SPAN
 import numpy as np
-
+from tqdm import tqdm
+from flair.embeddings import TransformerWordEmbeddings
 
 class RelationsVectorizer:
 
@@ -24,7 +26,6 @@ class RelationsVectorizer:
 
         self.e_vectors = self.embedding_vectorizer.vectors
         self.vectors = self.merge_vectors(self.f_vectors, self.e_vectors)
-        # print()
 
     def normalize_features(self):
         sent_max = max([f["dist_sent"] for f in self.features])
@@ -141,16 +142,19 @@ class RelationsVectorizer:
             features["dist_tree"] = dist
 
 
+
 class WeVectorizer:
 
     def __init__(self,  op_relations, vectorizer=None):
         if not vectorizer:
-            self.vectorizer = en_core_web_md.load()
+
+            # self.vectorizer = en_core_web_md.load()
+            self.vectorizer = TransformerWordEmbeddings('roberta-base')
         self.vectors = self.vectorizer_data(op_relations)
 
-    def vectorizer_data(self, relations):
+    def _vectorizer_data(self, relations):
         vecs = []
-        for sent_id, per_cand, org_cand, sent_raw  in relations:
+        for sent_id, per_cand, org_cand, sent_raw  in tqdm(relations):
             sent = sent_raw.strip("().\n")
             org = org_cand['text']
             per = per_cand['text']
@@ -158,6 +162,17 @@ class WeVectorizer:
             vecs.append(self.vec_sent(sent_clean, per, org))
         vecs = np.array(vecs)
         return vecs
+
+    def vectorizer_data(self, relations):
+        vecs = []
+        for sent_id, per_cand, org_cand, sent_raw  in tqdm(relations):
+            sent = sent_raw.strip("().\n")
+            sent = Sentence(sent)
+            vecs.append(self.vectorizer.embed(sent))
+        vecs = np.array(vecs)
+        return vecs
+
+
 
     def vec_sent(self, sent, per_candidate, org_candidate):
         toks = [t for t in self.vectorizer(sent) if not any([t.is_space, t.is_punct, t.is_stop, t.is_currency]) and t.has_vector]

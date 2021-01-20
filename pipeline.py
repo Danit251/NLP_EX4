@@ -16,6 +16,7 @@ from itertools import chain
 from operator import methodcaller
 
 
+
 class MlPipe:
     np.random.seed(42)
     models = {'xgboost': XGBClassifier,
