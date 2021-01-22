@@ -8,8 +8,8 @@ import numpy as np
 from tqdm import tqdm
 from flair.embeddings import TransformerWordEmbeddings
 
-class RelationsVectorizer:
 
+class RelationsVectorizer:
     def __init__(self, i2sentence, op_relations, embedding_type='', dv=None):
 
         self.features = self.get_features(i2sentence, op_relations)
@@ -22,7 +22,8 @@ class RelationsVectorizer:
         else:
             self.dv = dv
             self.f_vectors = self.dv.transform(self.features).toarray()
-        if embedding_type:
+        if embedding_type != '':
+            print("load embedding!")
             self.embedding_vectorizer = WeVectorizer(op_relations, embedding_type)
             self.e_vectors = self.embedding_vectorizer.vectors
             self.vectors = self.merge_vectors(self.f_vectors, self.e_vectors)

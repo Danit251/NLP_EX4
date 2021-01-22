@@ -3,6 +3,9 @@ import os
 from collections import defaultdict
 from itertools import product
 from typing import Tuple, Dict
+
+from sklearn.feature_extraction import DictVectorizer
+
 from common import PERSON, ORG, TEXT, RELATION, Relation, is_the_same
 import numpy as np
 from xgboost import XGBClassifier
@@ -28,7 +31,9 @@ class MlPipe:
             self.model = self.models[model](max_iter=kwargs['max_iter'])
         elif 'n_estimators' in kwargs:
             self.model = self.models[model](n_estimators=kwargs['n_estimators'],
-                                            scale_pos_weight=70)  # , eval_metric='logloss' need to add it and check if its work
+                                            scale_pos_weight=kwargs['scale_pos_weight'],
+                                            min_child_weight=kwargs['min_child_weight'])
+
         self.model_name = self.produce_model_name(model, kwargs)
 
     def produce_model_name(self, model, kwargs):
@@ -141,12 +146,16 @@ class RelationExtractionPipeLine:
     TRAIN_F = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "train_data.pkl")
     TEST_F = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "test_data.pkl")
     MODEL_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "model.pkl")
-
+    DICT_VECTORIZER_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "dv.pkl")
+    n_estimators_val = 100
+    scale_pos_weight_val = 51
+    min_child_weight_val = 2
     def __init__(self):
         self.rb_model = RuleBasedpipe()
 
-    def run_train_pipeline(self, train_path, test_path, use_cache=False, model_grid_search=False):
+    def run_train_pipeline(self, train_path, test_path, use_cache=False, model_grid_search=False, plot_results=False):
         train, test = self.read_train_data(test_path, train_path, use_cache)
+        print("Finish Reading data!")
         rb_train_pred = self.rb_model.pred(train)
         rb_test_pred = self.rb_model.pred(test)
 
@@ -159,9 +168,10 @@ class RelationExtractionPipeLine:
         ##########################
         if model_grid_search:
             from eval import main
-            for n_estimators_val in [100, 150, 200, 300, 600, 1000]:
-                for scale_pos_weight_val in [30, 50, 60, 70, 80, 90]:
-                    for min_child_weight_val in [1, 2, 3]:
+            for n_estimators_val in range(98, 102):
+                for scale_pos_weight_val in range(50, 53):
+                    for min_child_weight_val in range(10, 30):
+                        min_child_weight_val /= 10
                         xgboost = XGBClassifier(n_estimators=n_estimators_val, scale_pos_weight=scale_pos_weight_val,
                                                 min_child_weight=min_child_weight_val)
                         xgboost.fit(train_vectorized.vectors, train_labels)
@@ -178,17 +188,21 @@ class RelationExtractionPipeLine:
                         main('data/DEV.annotations.tsv', pred_f_name)
         ###########################
 
+
         model = self.train_model(train_vectorized.vectors, train_labels)
+        self.save_to_pickle(train_vectorized.dv.vocabulary_, self.DICT_VECTORIZER_PATH)
+
         ml_train_pred = model.predict(train_vectorized.vectors, train_op_relations)
         train_res = self.aggregate_result(rb_train_pred,
                                           ml_train_pred)
 
-        self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train_res)
 
         ml_test_pred = model.predict(test_vectorized.vectors, test_op_relations)
         test_res = self.aggregate_result(rb_test_pred,
                                          ml_test_pred)
-        self.write_annotated_file(f"PRED.DEV.annotations_{model.model_name}.txt", test_res)
+        if plot_results:
+            self.write_annotated_file(f"PRED.DEV.annotations_{model.model_name}.txt", test_res)
+            self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train_res)
 
     def aggregate_result(self, rb_train_pred, ml_train_pred):
         final_res = defaultdict(list)
@@ -205,7 +219,10 @@ class RelationExtractionPipeLine:
         return final_res
 
     def train_model(self, vectors, labels):
-        ml_model = MlPipe('xgboost', n_estimators=100)
+        ml_model = MlPipe('xgboost',
+                          n_estimators=self.n_estimators_val,
+                          scale_pos_weight=self.scale_pos_weight_val,
+                          min_child_weight=self.min_child_weight_val)
         ml_model.train_model(vectors, labels)
         self.save_to_pickle(ml_model, self.MODEL_PATH)
         return ml_model
@@ -213,9 +230,12 @@ class RelationExtractionPipeLine:
     def run(self, test_path, output_path):
         test = ProcessCorpusData(test_path)
         model = self.load_from_pickle(self.MODEL_PATH)
+        features_names = self.load_from_pickle(self.DICT_VECTORIZER_PATH)
+        dv = DictVectorizer()
+        dv.fit([features_names])
         rb_test_pred = self.rb_model.pred(test)
         op_relations = test.get_op_relations()
-        test_vectorized = RelationsVectorizer(test.i2sentence, op_relations)
+        test_vectorized = RelationsVectorizer(test.i2sentence, op_relations, dv=dv)
         ml_test_pred = model.predict(test_vectorized.vectors, op_relations)
         test_res = self.aggregate_result(rb_test_pred,
                                          ml_test_pred)

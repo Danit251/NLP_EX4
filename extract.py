@@ -3,11 +3,10 @@ from pipeline import RelationExtractionPipeLine
 
 
 def dev_main():
-    use_cache = True
     train_path = sys.argv[1]
     test_path = sys.argv[2]
     pipeline = RelationExtractionPipeLine()
-    pipeline.run_train_pipeline(train_path, test_path, use_cache)
+    pipeline.run_train_pipeline(train_path, test_path, use_cache=True, model_grid_search=False)
 
 
 def main():
@@ -25,5 +24,5 @@ def main():
 
 
 if __name__ == '__main__':
+    dev_main()
     main()
-    # dev_main()
