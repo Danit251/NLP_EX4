@@ -143,10 +143,10 @@ class RuleBasedpipe:
 
 
 class RelationExtractionPipeLine:
-    TRAIN_F = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "train_data.pkl")
-    TEST_F = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "test_data.pkl")
-    MODEL_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "model.pkl")
-    DICT_VECTORIZER_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "dv.pkl")
+    TRAIN_F = os.path.join(os.path.dirname(os.path.realpath(__file__)), "train_data.pkl")
+    TEST_F = os.path.join(os.path.dirname(os.path.realpath(__file__)),  "test_data.pkl")
+    MODEL_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), "model.pkl")
+    DICT_VECTORIZER_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), "dv.pkl")
     n_estimators_val = 100
     scale_pos_weight_val = 51
     min_child_weight_val = 2

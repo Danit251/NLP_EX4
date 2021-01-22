@@ -24,5 +24,5 @@ def main():
 
 
 if __name__ == '__main__':
-    dev_main()
+    # dev_main()
     main()
