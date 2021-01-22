@@ -30,8 +30,33 @@ class RelationSentenceBuilder:
     def clean_sent(sent):
         return sent.replace("-LRB-", "(").replace("-RRB-", ")").replace("-LCB-", "").strip("()\n ")
 
+
+
+
+
 class ProcessCorpusData:
-    pass
+    def __init__(self, path):
+        self.i2sentence = self.process_data(path)
+
+    def process_data(self, path):
+        relation_builder = RelationSentenceBuilder()
+        i2relations = defaultdict(list)
+        with open(path) as f:
+            lines = f.readlines()
+            sentences = {}
+            for line in tqdm(lines):
+                idx, sentence = line.split("\t")
+                if idx not in i2relations:
+                    sentences[idx] = relation_builder.build_relation_sent(idx, sentence)
+
+        return sentences
+
+    def get_op_relations(self):
+        relations = []
+        for sentence in self.i2sentence.values():
+            for person, org in list(product(sentence.entities[PERSON], sentence.entities[ORG])):
+                relations.append((sentence.idx, person, org, sentence.text))
+        return relations
 
 
 class ProcessAnnotatedData:
@@ -53,7 +78,7 @@ class ProcessAnnotatedData:
 
         return sentences, i2relations
 
-    def get_relations(self):
+    def get_relations_tag(self):
         relations = []
         labels = []
         for sentence in self.i2sentence.values():

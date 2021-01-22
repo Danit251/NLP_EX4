@@ -10,8 +10,7 @@ from flair.embeddings import TransformerWordEmbeddings
 
 class RelationsVectorizer:
 
-    def __init__(self, i2sentence, op_relations, dv=None):
-        self.embedding_vectorizer = WeVectorizer(op_relations)
+    def __init__(self, i2sentence, op_relations, embedding_type='', dv=None):
 
         self.features = self.get_features(i2sentence, op_relations)
         self.remove_redundant_features()
@@ -23,9 +22,12 @@ class RelationsVectorizer:
         else:
             self.dv = dv
             self.f_vectors = self.dv.transform(self.features).toarray()
-
-        self.e_vectors = self.embedding_vectorizer.vectors
-        self.vectors = self.merge_vectors(self.f_vectors, self.e_vectors)
+        if embedding_type:
+            self.embedding_vectorizer = WeVectorizer(op_relations, embedding_type)
+            self.e_vectors = self.embedding_vectorizer.vectors
+            self.vectors = self.merge_vectors(self.f_vectors, self.e_vectors)
+        else:
+            self.vectors = self.f_vectors
 
     def normalize_features(self):
         sent_max = max([f["dist_sent"] for f in self.features])
@@ -145,10 +147,10 @@ class RelationsVectorizer:
 
 class WeVectorizer:
 
-    def __init__(self,  op_relations, vectorizer=None):
-        if not vectorizer:
-
-            # self.vectorizer = en_core_web_md.load()
+    def __init__(self,  op_relations, vectorizer='spacy'):
+        if vectorizer == 'spacy':
+            self.vectorizer = en_core_web_md.load()
+        else:
             self.vectorizer = TransformerWordEmbeddings('roberta-base')
         self.vectors = self.vectorizer_data(op_relations)
 
@@ -172,8 +174,6 @@ class WeVectorizer:
             vecs.append(sent[0].embedding.cpu().detach().numpy())
         vecs = np.array(vecs)
         return vecs
-
-
 
     def vec_sent(self, sent, per_candidate, org_candidate):
         toks = [t for t in self.vectorizer(sent) if not any([t.is_space, t.is_punct, t.is_stop, t.is_currency]) and t.has_vector]

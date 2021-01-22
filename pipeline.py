@@ -10,20 +10,16 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
-from data_processor import ProcessAnnotatedData
+from data_processor import ProcessAnnotatedData, ProcessCorpusData
 from relation_vectorizer import RelationsVectorizer
 from itertools import chain
 from operator import methodcaller
 
 
-
 class MlPipe:
     np.random.seed(42)
-    models = {'xgboost': XGBClassifier,
-              'logreg': LogisticRegression,
-              'sgd': SGDClassifier,
-              'rf': RandomForestClassifier,
-              'svc': LinearSVC}
+    models = {'xgboost': XGBClassifier, 'logreg': LogisticRegression, 'sgd': SGDClassifier,
+              'rf': RandomForestClassifier, 'svc': LinearSVC}
 
     def __init__(self, model, **kwargs):
         if model not in self.models:
@@ -31,7 +27,8 @@ class MlPipe:
         if 'max_iter' in kwargs:
             self.model = self.models[model](max_iter=kwargs['max_iter'])
         elif 'n_estimators' in kwargs:
-            self.model = self.models[model](n_estimators=kwargs['n_estimators'], scale_pos_weight=70) #, eval_metric='logloss' need to add it and check if its work
+            self.model = self.models[model](n_estimators=kwargs['n_estimators'],
+                                            scale_pos_weight=70)  # , eval_metric='logloss' need to add it and check if its work
         self.model_name = self.produce_model_name(model, kwargs)
 
     def produce_model_name(self, model, kwargs):
@@ -40,7 +37,7 @@ class MlPipe:
             kwargs_str += f'{k}_{v}'
         return kwargs_str
 
-    def train_model(self,  vectors, labels):
+    def train_model(self, vectors, labels):
         self.model.fit(vectors, labels)
 
     def predict(self, test_vectors, op_relations):
@@ -52,7 +49,6 @@ class MlPipe:
         return res
 
 
-
 class RuleBasedpipe:
 
     def filter_data_set(self, data):
@@ -60,7 +56,7 @@ class RuleBasedpipe:
         self._apposition_rule(data)
         return data
 
-    def pred(self, data): #TODO debug it to see it's ok
+    def pred(self, data):
         predictions_noun_chunks = self._noun_chunk_rule(data)
         predictions_apposition_rule = self._apposition_rule(data)
         # initialise defaultdict of lists
@@ -131,56 +127,42 @@ class RuleBasedpipe:
         if org_head_token.dep_ == "pobj" and org_head_token.head.dep_ == "prep":
             if self.is_person_token(org_head_token.head.head, person):
                 return True
-            elif org_head_token.head.head.dep_ == "appos" and self.is_person_token(org_head_token.head.head.head, person):
+            elif org_head_token.head.head.dep_ == "appos" and self.is_person_token(org_head_token.head.head.head,
+                                                                                   person):
                 return True
-        elif org_head_token.dep_ in ["nmod", "compound"] and org_head_token.head.dep_ == "appos" and self.is_person_token(
-                org_head_token.head.head, person):
+        elif org_head_token.dep_ in {"nmod", "compound"} and \
+                org_head_token.head.dep_ == "appos" and \
+                self.is_person_token(org_head_token.head.head, person):
             return True
         return False
 
-    def remove__op_relation(self, entities, matched):
-        pass
-
 
 class RelationExtractionPipeLine:
-
     TRAIN_F = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "train_data.pkl")
-    TEST_F = os.path.join(os.path.dirname(os.path.realpath(__file__)),  'cache', "test_data.pkl")
-    MODEL_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)),  'cache', "model.pkl")
+    TEST_F = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "test_data.pkl")
+    MODEL_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache', "model.pkl")
 
     def __init__(self):
         self.rb_model = RuleBasedpipe()
 
-        # self.MODEL_PATH = None
-        # if train_path:
-        #
-        #     train, self.test = self.read_train_data(test_path, train_path, use_cache)
-        #     self.train = self.rb_model.filter_data_set(train)
-
-        # self.pred = self.rb_model.pred(self.test)
-        # self.relation_vectors = RelationsVectorizer(self.train, self.test)
-        # self.ml_model = MlPipe('xgboost', n_estimators=1000)
-        # self.run()
-
-    def run_train_pipeline(self, train_path, test_path, use_cache=False):
+    def run_train_pipeline(self, train_path, test_path, use_cache=False, model_grid_search=False):
         train, test = self.read_train_data(test_path, train_path, use_cache)
         rb_train_pred = self.rb_model.pred(train)
         rb_test_pred = self.rb_model.pred(test)
 
-        train_op_relations, train_labels = train.get_relations()
-        test_op_relations, test_labels = test.get_relations()
+        train_op_relations, train_labels = train.get_relations_tag()
+        test_op_relations, test_labels = test.get_relations_tag()
 
         train_vectorized = RelationsVectorizer(train.i2sentence, train_op_relations)
         test_vectorized = RelationsVectorizer(test.i2sentence, test_op_relations, dv=train_vectorized.dv)
 
         ##########################
-        if False:
+        if model_grid_search:
             from eval import main
             for n_estimators_val in [100, 150, 200, 300, 600, 1000]:
                 for scale_pos_weight_val in [30, 50, 60, 70, 80, 90]:
                     for min_child_weight_val in [1, 2, 3]:
-                        xgboost = XGBClassifier(n_estimators=n_estimators_val,
-                                                scale_pos_weight=scale_pos_weight_val,
+                        xgboost = XGBClassifier(n_estimators=n_estimators_val, scale_pos_weight=scale_pos_weight_val,
                                                 min_child_weight=min_child_weight_val)
                         xgboost.fit(train_vectorized.vectors, train_labels)
                         pred = xgboost.predict(test_vectorized.vectors)
@@ -188,27 +170,27 @@ class RelationExtractionPipeLine:
                         for i, (idx, person, org, sentence) in enumerate(test_op_relations):
                             if pred[i] == "1":
                                 res[idx].append(Relation(person[TEXT], org[TEXT], sentence))
-                        agg = self.agregate_result(rb_test_pred, res)
+                        agg = self.aggregate_result(rb_test_pred, res)
                         pred_f_name = f"PRED.TRAIN.annotations_est_{n_estimators_val}_pos_{scale_pos_weight_val}_min_child_weight_{min_child_weight_val}.txt"
                         self.write_annotated_file(pred_f_name, agg)
-                        print(f"Reslult for est: {n_estimators_val} pos: {scale_pos_weight_val} child_weight: {min_child_weight_val}")
-                        main('DEV.annotations.txt', pred_f_name)
+                        print(
+                            f"Reslult for est: {n_estimators_val} pos: {scale_pos_weight_val} child_weight: {min_child_weight_val}")
+                        main('data/DEV.annotations.tsv', pred_f_name)
         ###########################
-
 
         model = self.train_model(train_vectorized.vectors, train_labels)
         ml_train_pred = model.predict(train_vectorized.vectors, train_op_relations)
-        train_res = self.agregate_result(rb_train_pred, ml_train_pred) #TODO just for debugging - after out back rb_train_pred
+        train_res = self.aggregate_result(rb_train_pred,
+                                          ml_train_pred)
 
         self.write_annotated_file(f"PRED.TRAIN.annotations_{model.model_name}.txt", train_res)
 
-
         ml_test_pred = model.predict(test_vectorized.vectors, test_op_relations)
-        test_res = self.agregate_result(rb_test_pred, ml_test_pred) #TODO just for debugging - after out back rb_test_pred
+        test_res = self.aggregate_result(rb_test_pred,
+                                         ml_test_pred)
         self.write_annotated_file(f"PRED.DEV.annotations_{model.model_name}.txt", test_res)
 
-
-    def agregate_result(self, rb_train_pred, ml_train_pred):
+    def aggregate_result(self, rb_train_pred, ml_train_pred):
         final_res = defaultdict(list)
 
         for sent_id, rel_list in rb_train_pred.items():
@@ -222,8 +204,47 @@ class RelationExtractionPipeLine:
                     final_res[sent_id].append(rel)
         return final_res
 
+    def train_model(self, vectors, labels):
+        ml_model = MlPipe('xgboost', n_estimators=100)
+        ml_model.train_model(vectors, labels)
+        self.save_to_pickle(ml_model, self.MODEL_PATH)
+        return ml_model
 
-    def is_in_final_res(self, final_res, rel: Relation, sent_id):
+    def run(self, test_path, output_path):
+        test = ProcessCorpusData(test_path)
+        model = self.load_from_pickle(self.MODEL_PATH)
+        rb_test_pred = self.rb_model.pred(test)
+        op_relations = test.get_op_relations()
+        test_vectorized = RelationsVectorizer(test.i2sentence, op_relations)
+        ml_test_pred = model.predict(test_vectorized.vectors, op_relations)
+        test_res = self.aggregate_result(rb_test_pred,
+                                         ml_test_pred)
+        self.write_annotated_file(output_path, test_res)
+
+    def read_train_data(self, test_path, train_path, use_cache) -> Tuple[ProcessAnnotatedData, ProcessAnnotatedData]:
+        if use_cache:
+            train = self.load_from_pickle(self.TRAIN_F)
+            test = self.load_from_pickle(self.TEST_F)
+            return train, test
+        train = ProcessAnnotatedData(train_path)
+        self.save_to_pickle(train, self.TRAIN_F)
+        test = ProcessAnnotatedData(test_path)
+        self.save_to_pickle(test, self.TEST_F)
+        return train, test
+
+    @staticmethod
+    def save_to_pickle(data, path):
+        with open(path, 'wb') as output:
+            pickle.dump(data, output, pickle.HIGHEST_PROTOCOL)
+
+    @staticmethod
+    def load_from_pickle(f_name):
+        with open(f_name, 'rb') as f:
+            data = pickle.load(f)
+        return data
+
+    @staticmethod
+    def is_in_final_res(final_res, rel: Relation, sent_id):
         for res_rel in final_res[sent_id]:
             new_person = rel.person
             new_org = rel.org
@@ -237,44 +258,3 @@ class RelationExtractionPipeLine:
             for idx, sent_relations in train_res.items():
                 for (person, org, sentence) in sent_relations:
                     f_res.write("\t".join([idx, person, RELATION, org, f"( {sentence} )\n"]))
-
-    def train_model(self, vectors, labels):
-        ml_model = MlPipe('xgboost', n_estimators=100)
-        ml_model.train_model(vectors, labels)
-        self.save_to_pickle(ml_model, self.MODEL_PATH)
-        return ml_model
-
-    def run(self):
-        pass
-        # self.ml_model.train_model(self.relation_vectors.train_vectors, self.relation_vectors.train_labels)
-        # predicted_labels = self.ml_model.predict(self.relation_vectors.test_vectors)
-        # write_results(f"PRED.annotations_{self.ml_model.model_name}.txt", self.test.op_relations, predicted_labels)
-
-    def read_train_data(self, test_path, train_path, use_cache) -> Tuple[ProcessAnnotatedData, ProcessAnnotatedData]:
-        if use_cache:
-            train = self.load_from_pickle(self.TRAIN_F)
-            test = self.load_from_pickle(self.TEST_F)
-            return train, test
-        train = ProcessAnnotatedData(train_path)
-        self.save_to_pickle(train, self.TRAIN_F)
-        test = ProcessAnnotatedData(test_path)
-        self.save_to_pickle(test, self.TEST_F)
-        return train, test
-
-    def save_to_pickle(self, data, path):
-        with open(path, 'wb') as output:
-            pickle.dump(data, output, pickle.HIGHEST_PROTOCOL)
-
-    @staticmethod
-    def load_from_pickle(f_name):
-        with open(f_name, 'rb') as f:
-            data = pickle.load(f)
-        return data
-
-
-
-
-
-
-
-

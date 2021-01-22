@@ -16,10 +16,8 @@ def main():
     if not test_path.endswith('.txt'):
         print("Please use a txt  file.")
         exit(1)
-    train_mode = True
-    pipeline = RelationExtractionPipeLine(train_mode=True)
-    # pipeline = RelationExtractionPipeLine(test_path, train_path, use_cache)
-    pipeline.run()
+    pipeline = RelationExtractionPipeLine()
+    pipeline.run(test_path, output_path)
 
 
 
@@ -27,5 +25,5 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    dev_main()
+    main()
+    # dev_main()
